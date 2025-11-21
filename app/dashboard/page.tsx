@@ -34,7 +34,9 @@ function DashboardContent() {
   } = useRealtimeData<SensorData>("sensors/current", {
     temperature: 0,
     humidity: 0,
-    pillCount: 100,
+    bottle1Count: 100,
+    bottle2Count: 30,
+    bottle3Count: 6,
     lastDispensed: 0,
     isDispensing: false,
     fanStatus: "off",
@@ -48,9 +50,9 @@ function DashboardContent() {
       {
         id: "1",
         type: ActivityEventType.PILL_DISPENSED,
-        message: "약 1개 배출됨 (100 → 99개)",
+        message: "Bottle 2: 약 1개 배출됨 (98 → 97개)",
         timestamp: now - 5 * 60 * 1000,
-        data: { count: 1 },
+        data: { bottleId: 2, count: 1 },
       },
       {
         id: "2",
@@ -69,9 +71,9 @@ function DashboardContent() {
       {
         id: "6",
         type: ActivityEventType.PILL_DISPENSED,
-        message: "약 2개 배출됨 (102 → 100개)",
+        message: "Bottle 1: 약 2개 배출됨 (100 → 98개)",
         timestamp: now - 35 * 60 * 1000,
-        data: { count: 2 },
+        data: { bottleId: 1, count: 2 },
       },
       {
         id: "7",
@@ -97,9 +99,9 @@ function DashboardContent() {
       {
         id: "10",
         type: ActivityEventType.PILL_LOW,
-        message: "알림: 약 보충 필요 (남은 개수: 8개)",
+        message: "Bottle 3: 약 보충 필요 (남은 개수: 8개)",
         timestamp: now - 3 * 60 * 60 * 1000,
-        data: { pillCount: 8 },
+        data: { bottleId: 3, pillCount: 8 },
       },
     ];
   });
@@ -119,15 +121,39 @@ function DashboardContent() {
 
     const newEvents: ActivityEvent[] = [];
 
-    // 약 배출 감지
-    if (sensorData.pillCount < prevData.pillCount) {
-      const dispensedCount = prevData.pillCount - sensorData.pillCount;
+    // Bottle 1 배출 감지
+    if (sensorData.bottle1Count < prevData.bottle1Count) {
+      const dispensedCount = prevData.bottle1Count - sensorData.bottle1Count;
       newEvents.push({
-        id: `${Date.now()}_dispensed`,
+        id: `${Date.now()}_bottle1_dispensed`,
         type: ActivityEventType.PILL_DISPENSED,
-        message: `약 ${dispensedCount}개 배출됨 (${prevData.pillCount} → ${sensorData.pillCount}개)`,
+        message: `Bottle 1: 약 ${dispensedCount}개 배출됨 (${prevData.bottle1Count} → ${sensorData.bottle1Count}개)`,
         timestamp: Date.now(),
-        data: { count: dispensedCount },
+        data: { bottleId: 1, count: dispensedCount },
+      });
+    }
+
+    // Bottle 2 배출 감지
+    if (sensorData.bottle2Count < prevData.bottle2Count) {
+      const dispensedCount = prevData.bottle2Count - sensorData.bottle2Count;
+      newEvents.push({
+        id: `${Date.now()}_bottle2_dispensed`,
+        type: ActivityEventType.PILL_DISPENSED,
+        message: `Bottle 2: 약 ${dispensedCount}개 배출됨 (${prevData.bottle2Count} → ${sensorData.bottle2Count}개)`,
+        timestamp: Date.now(),
+        data: { bottleId: 2, count: dispensedCount },
+      });
+    }
+
+    // Bottle 3 배출 감지
+    if (sensorData.bottle3Count < prevData.bottle3Count) {
+      const dispensedCount = prevData.bottle3Count - sensorData.bottle3Count;
+      newEvents.push({
+        id: `${Date.now()}_bottle3_dispensed`,
+        type: ActivityEventType.PILL_DISPENSED,
+        message: `Bottle 3: 약 ${dispensedCount}개 배출됨 (${prevData.bottle3Count} → ${sensorData.bottle3Count}개)`,
+        timestamp: Date.now(),
+        data: { bottleId: 3, count: dispensedCount },
       });
     }
 
@@ -190,14 +216,36 @@ function DashboardContent() {
       });
     }
 
-    // 약 부족 경고
-    if (sensorData.pillCount < 10 && prevData.pillCount >= 10) {
+    // Bottle 1 약 부족 경고
+    if (sensorData.bottle1Count < 10 && prevData.bottle1Count >= 10) {
       newEvents.push({
-        id: `${Date.now()}_pill_low`,
+        id: `${Date.now()}_bottle1_low`,
         type: ActivityEventType.PILL_LOW,
-        message: `알림: 약 보충 필요 (남은 개수: ${sensorData.pillCount}개)`,
+        message: `Bottle 1: 약 보충 필요 (남은 개수: ${sensorData.bottle1Count}개)`,
         timestamp: Date.now(),
-        data: { pillCount: sensorData.pillCount },
+        data: { bottleId: 1, pillCount: sensorData.bottle1Count },
+      });
+    }
+
+    // Bottle 2 약 부족 경고
+    if (sensorData.bottle2Count < 10 && prevData.bottle2Count >= 10) {
+      newEvents.push({
+        id: `${Date.now()}_bottle2_low`,
+        type: ActivityEventType.PILL_LOW,
+        message: `Bottle 2: 약 보충 필요 (남은 개수: ${sensorData.bottle2Count}개)`,
+        timestamp: Date.now(),
+        data: { bottleId: 2, pillCount: sensorData.bottle2Count },
+      });
+    }
+
+    // Bottle 3 약 부족 경고
+    if (sensorData.bottle3Count < 10 && prevData.bottle3Count >= 10) {
+      newEvents.push({
+        id: `${Date.now()}_bottle3_low`,
+        type: ActivityEventType.PILL_LOW,
+        message: `Bottle 3: 약 보충 필요 (남은 개수: ${sensorData.bottle3Count}개)`,
+        timestamp: Date.now(),
+        data: { bottleId: 3, pillCount: sensorData.bottle3Count },
       });
     }
 
@@ -293,8 +341,63 @@ function DashboardContent() {
         </div>
 
         {/* 센서 데이터 그리드 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
-          <SensorCard>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
+          {/* 모바일: 온도 + 습도 통합 카드 */}
+          <SensorCard className="lg:hidden">
+            <SensorCard.Title>Environment</SensorCard.Title>
+            <div className="grid grid-cols-2 gap-6">
+              {/* Temperature */}
+              <div>
+                <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-3">
+                  Temperature
+                </div>
+                <div className="flex items-baseline gap-2 mb-2">
+                  <span
+                    className={`text-4xl font-light tracking-tight ${
+                      sensorData && sensorData.temperature > 30
+                        ? "text-yellow-600 dark:text-yellow-400"
+                        : "text-black dark:text-white"
+                    }`}
+                  >
+                    {sensorData?.temperature.toFixed(1) ?? "--"}
+                  </span>
+                  <span className="text-lg text-zinc-400 dark:text-zinc-500 font-light">
+                    °C
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-500 dark:text-zinc-500 uppercase tracking-wider">
+                  Optimal: 15-25°C
+                </p>
+              </div>
+
+              {/* Humidity */}
+              <div>
+                <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-3">
+                  Humidity
+                </div>
+                <div className="flex items-baseline gap-2 mb-2">
+                  <span
+                    className={`text-4xl font-light tracking-tight ${
+                      sensorData && sensorData.humidity > 70
+                        ? "text-yellow-600 dark:text-yellow-400"
+                        : "text-black dark:text-white"
+                    }`}
+                  >
+                    {sensorData?.humidity.toFixed(1) ?? "--"}
+                  </span>
+                  <span className="text-lg text-zinc-400 dark:text-zinc-500 font-light">
+                    %
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-500 dark:text-zinc-500 uppercase tracking-wider">
+                  Optimal: 40-60%
+                </p>
+              </div>
+            </div>
+          </SensorCard>
+
+          {/* 데스크톱: 온도 카드 */}
+          <SensorCard className="hidden lg:block">
             <SensorCard.Title>Temperature</SensorCard.Title>
             <SensorCard.Value
               value={sensorData?.temperature.toFixed(1) ?? "--"}
@@ -306,7 +409,8 @@ function DashboardContent() {
             <SensorCard.Description>Optimal: 15-25°C</SensorCard.Description>
           </SensorCard>
 
-          <SensorCard>
+          {/* 데스크톱: 습도 카드 */}
+          <SensorCard className="hidden lg:block">
             <SensorCard.Title>Humidity</SensorCard.Title>
             <SensorCard.Value
               value={sensorData?.humidity.toFixed(1) ?? "--"}
@@ -319,19 +423,86 @@ function DashboardContent() {
           </SensorCard>
 
           <SensorCard>
-            <SensorCard.Title>Pill Count</SensorCard.Title>
-            <SensorCard.Value
-              value={sensorData?.pillCount ?? "--"}
-              unit=""
-              status={
-                sensorData && sensorData.pillCount < 10 ? "error" : "normal"
-              }
-            />
-            <SensorCard.Description>
-              {sensorData && sensorData.pillCount < 10
-                ? "Refill required"
-                : "Normal"}
-            </SensorCard.Description>
+            <SensorCard.Title>Pill Bottles</SensorCard.Title>
+            <div className="space-y-4">
+              {/* Bottle 1 */}
+              <div className="pb-4 border-b border-zinc-200 dark:border-zinc-800">
+                <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-2">
+                  Bottle 1
+                </div>
+                <div className="flex items-baseline gap-2 mb-1">
+                  <span
+                    className={`text-3xl font-light tracking-tight ${
+                      sensorData && sensorData.bottle1Count < 10
+                        ? "text-red-600 dark:text-red-400"
+                        : "text-black dark:text-white"
+                    }`}
+                  >
+                    {sensorData?.bottle1Count ?? "--"}
+                  </span>
+                  <span className="text-sm text-zinc-400 dark:text-zinc-500 font-light">
+                    pills
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-500 dark:text-zinc-500">
+                  {sensorData && sensorData.bottle1Count < 10
+                    ? "Refill required"
+                    : "Normal"}
+                </p>
+              </div>
+
+              {/* Bottle 2 */}
+              <div className="pb-4 border-b border-zinc-200 dark:border-zinc-800">
+                <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-2">
+                  Bottle 2
+                </div>
+                <div className="flex items-baseline gap-2 mb-1">
+                  <span
+                    className={`text-3xl font-light tracking-tight ${
+                      sensorData && sensorData.bottle2Count < 10
+                        ? "text-red-600 dark:text-red-400"
+                        : "text-black dark:text-white"
+                    }`}
+                  >
+                    {sensorData?.bottle2Count ?? "--"}
+                  </span>
+                  <span className="text-sm text-zinc-400 dark:text-zinc-500 font-light">
+                    pills
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-500 dark:text-zinc-500">
+                  {sensorData && sensorData.bottle2Count < 10
+                    ? "Refill required"
+                    : "Normal"}
+                </p>
+              </div>
+
+              {/* Bottle 3 */}
+              <div>
+                <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-2">
+                  Bottle 3
+                </div>
+                <div className="flex items-baseline gap-2 mb-1">
+                  <span
+                    className={`text-3xl font-light tracking-tight ${
+                      sensorData && sensorData.bottle3Count < 10
+                        ? "text-red-600 dark:text-red-400"
+                        : "text-black dark:text-white"
+                    }`}
+                  >
+                    {sensorData?.bottle3Count ?? "--"}
+                  </span>
+                  <span className="text-sm text-zinc-400 dark:text-zinc-500 font-light">
+                    pills
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-500 dark:text-zinc-500">
+                  {sensorData && sensorData.bottle3Count < 10
+                    ? "Refill required"
+                    : "Normal"}
+                </p>
+              </div>
+            </div>
           </SensorCard>
         </div>
 
