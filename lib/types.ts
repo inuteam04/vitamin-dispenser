@@ -5,7 +5,9 @@
 export interface SensorData {
   temperature: number; // 섭씨 온도 (°C)
   humidity: number; // 상대습도 (%)
-  pillCount: number; // 현재 남은 알약 개수
+  bottle1Count: number; // Bottle 1 남은 알약 개수
+  bottle2Count: number; // Bottle 2 남은 알약 개수
+  bottle3Count: number; // Bottle 3 남은 알약 개수
   lastDispensed: number; // 마지막 배출 시간 (Unix Timestamp)
   isDispensing: boolean; // 배출 중 여부 (Photo Interrupter 감지)
   fanStatus: "off" | "on"; // 쿨링팬 상태
