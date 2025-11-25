@@ -10,11 +10,17 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --toast-bg: #ffffff;
+  --toast-text: #171717;
+  --toast-border: #e4e4e7;
 }
 
 :root[data-theme="dark"] {
   --background: #000000;
   --foreground: #ffffff;
+  --toast-bg: #18181b;
+  --toast-text: #fafafa;
+  --toast-border: #27272a;
 }
 
 body {
