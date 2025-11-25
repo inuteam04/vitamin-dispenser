@@ -1,15 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { ref, onValue, off, DatabaseReference } from "firebase/database";
 import { database } from "@/lib/firebase";
 
-/**
- * Generic 타입을 활용한 재사용 가능한 실시간 데이터 Hook
- * @template T - Firebase에서 받아올 데이터 타입
- * @param path - Realtime Database 경로 (예: 'sensors/current')
- * @param initialValue - 초기값 (옵션)
- */
 export function useRealtimeData<T>(
   path: string,
   initialValue?: T
@@ -24,6 +18,15 @@ export function useRealtimeData<T>(
   const [error, setError] = useState<Error | null>(null);
   const [retryCount, setRetryCount] = useState<number>(0);
 
+  // 이렇게 하면 initialValue가 바뀌어도 useEffect를 트리거하지 않으면서
+  // 내부 로직에서는 최신 값을 참조할 수 있습니다.
+  const initialValueRef = useRef<T | undefined>(initialValue);
+
+  // 렌더링 될 때마다 Ref 업데이트
+  useEffect(() => {
+    initialValueRef.current = initialValue;
+  }, [initialValue]);
+
   const retry = useCallback(() => {
     setRetryCount((prev) => prev + 1);
     setError(null);
@@ -34,7 +37,6 @@ export function useRealtimeData<T>(
     const dbRef: DatabaseReference = ref(database, path);
     let isSubscribed = true;
 
-    // Firebase onValue 리스너 등록 (실시간 동기화)
     const unsubscribe = onValue(
       dbRef,
       (snapshot) => {
@@ -45,8 +47,8 @@ export function useRealtimeData<T>(
           setData(value);
           setError(null);
         } else {
-          // 데이터 없음 (초기 상태)
-          setData(initialValue ?? null);
+          // Ref에 저장된 최신 초기값 사용
+          setData(initialValueRef.current ?? null);
         }
         setLoading(false);
       },
@@ -58,12 +60,13 @@ export function useRealtimeData<T>(
       }
     );
 
-    // Cleanup: 컴포넌트 언마운트 시 리스너 해제 (메모리 누수 방지)
     return () => {
       isSubscribed = false;
       off(dbRef, "value", unsubscribe);
     };
-  }, [path, initialValue, retryCount]);
+    // 의존성 배열에서 initialValue 제거
+    // 이제 초기값 객체가 새로 생성되어도 구독이 끊어졌다 다시 연결되지 않습니다.
+  }, [path, retryCount]);
 
   return { data, loading, error, retry };
 }
