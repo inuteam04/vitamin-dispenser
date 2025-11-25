@@ -102,7 +102,7 @@ function getEventStyle(type: ActivityEventType): {
     case ActivityEventType.FAN_ON:
       return { icon: "🌀", color: "bg-cyan-100 dark:bg-cyan-900/30" };
     case ActivityEventType.FAN_OFF:
-      return { icon: "⏹️", color: "bg-zinc-100 dark:bg-zinc-800" };
+      return { icon: "🛑", color: "bg-zinc-100 dark:bg-zinc-800" };
     case ActivityEventType.TEMP_WARNING:
       return { icon: "⚠️", color: "bg-yellow-100 dark:bg-yellow-900/30" };
     case ActivityEventType.TEMP_CRITICAL:

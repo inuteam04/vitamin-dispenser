@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { SensorCard } from "@/components/SensorCard";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ActivityLog } from "@/components/ActivityLog";
 import { useRealtimeData } from "@/lib/hooks/useRealtimeData";
+import { useAuth } from "@/lib/hooks/useAuth";
 import {
   SensorData,
   SystemStatus,
@@ -12,12 +14,16 @@ import {
   ActivityEventType,
 } from "@/lib/types";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { UserMenu } from "@/components/UserMenu";
+import { withAuth } from "@/components/withAuth";
+import toast from "react-hot-toast";
 
 /**
  * 메인 대시보드 페이지
  * Firebase Realtime Database의 '/sensors/current' 경로를 구독
+ * 인증된 사용자만 접근 가능
  */
-export default function DashboardPage() {
+function DashboardPage() {
   return (
     <ErrorBoundary>
       <DashboardContent />
@@ -25,7 +31,12 @@ export default function DashboardPage() {
   );
 }
 
+// 인증 보호 적용
+export default withAuth(DashboardPage);
+
 function DashboardContent() {
+  const { logout } = useAuth();
+  const router = useRouter();
   const {
     data: sensorData,
     loading,
@@ -106,6 +117,20 @@ function DashboardContent() {
     ];
   });
   const previousDataRef = useRef<SensorData | null>(null);
+
+  // permission_denied 에러 발생 시 자동 로그아웃
+  useEffect(() => {
+    if (error && error.message.includes("permission_denied")) {
+      const handlePermissionDenied = async () => {
+        toast.error("접근 권한이 없습니다. 자동으로 로그아웃됩니다.", {
+          duration: 4000,
+        });
+        await logout();
+        router.push("/login?error=permission_denied");
+      };
+      handlePermissionDenied();
+    }
+  }, [error, logout, router]);
 
   // 센서 데이터 변화 감지 및 이벤트 생성
   useEffect(() => {
@@ -305,16 +330,21 @@ function DashboardContent() {
     <div className="min-h-screen bg-white dark:bg-black text-black dark:text-white p-8">
       <div className="max-w-7xl mx-auto">
         {/* 헤더 */}
-        <header className="mb-12 border-b border-zinc-200 dark:border-zinc-800 pb-8 flex items-start justify-between">
-          <div>
-            <h1 className="text-5xl font-light tracking-tight mb-3">
-              Vitamin Dispenser
-            </h1>
-            <p className="text-zinc-600 dark:text-zinc-400 text-sm uppercase tracking-wider">
-              Real-time Monitoring & Control
-            </p>
+        <header className="mb-12 border-b border-zinc-200 dark:border-zinc-800 pb-8">
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <h1 className="text-5xl font-light tracking-tight mb-3">
+                Vitamin Dispenser
+              </h1>
+              <p className="text-zinc-600 dark:text-zinc-400 text-sm uppercase tracking-wider">
+                Real-time Monitoring & Control
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <ThemeToggle />
+              <UserMenu />
+            </div>
           </div>
-          <ThemeToggle />
         </header>
 
         {/* 시스템 상태 배너 */}
