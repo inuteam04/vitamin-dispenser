@@ -27,7 +27,7 @@ export default function Home() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
             </span>
-            Capstone Design Project 2025
+            INU Maker Project 2025
           </div>
 
           <h1 className="max-w-4xl text-5xl font-bold leading-tight tracking-tight text-zinc-900 dark:text-white md:text-6xl">
