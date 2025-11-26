@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/hooks/useAuth";
@@ -8,10 +8,9 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import toast from "react-hot-toast";
 
 /**
- * 로그인 페이지
- * Firebase Google 인증을 사용한 로그인
+ * 로그인 페이지 내용 컴포넌트
  */
-export default function LoginPage() {
+function LoginContent() {
   const { user, loading, loginWithGoogle } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -124,11 +123,29 @@ export default function LoginPage() {
         {/* 하단 링크 */}
         <Link
           href="/"
-          className="justify-center flex text-zinc-500 dark:text-zinc-500 hover:text-black dark:hover:text-white text-sm uppercase tracking-wider transition-colors"
+          className="mt-5 justify-center flex text-zinc-500 dark:text-zinc-500 hover:text-black dark:hover:text-white text-sm uppercase tracking-wider transition-colors"
         >
           ← Back to Home
         </Link>
       </div>
     </div>
+  );
+}
+
+/**
+ * 로그인 페이지
+ * Firebase Google 인증을 사용한 로그인
+ */
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-screen bg-white dark:bg-black">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-black dark:border-white"></div>
+        </div>
+      }
+    >
+      <LoginContent />
+    </Suspense>
   );
 }
