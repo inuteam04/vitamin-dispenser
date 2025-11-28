@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { SensorCard } from "@/components/SensorCard";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -20,7 +20,6 @@ import toast from "react-hot-toast";
 
 /**
  * 메인 대시보드 페이지
- * Firebase Realtime Database의 '/sensors/current' 경로를 구독
  * 인증된 사용자만 접근 가능
  */
 function DashboardPage() {
@@ -42,7 +41,7 @@ function DashboardContent() {
     loading,
     error,
     retry,
-  } = useRealtimeData<SensorData>("sensors/current", {
+  } = useRealtimeData<SensorData>("sensors", {
     temperature: 0,
     humidity: 0,
     bottle1Count: 100,
@@ -50,7 +49,7 @@ function DashboardContent() {
     bottle3Count: 6,
     lastDispensed: 0,
     isDispensing: false,
-    fanStatus: "off",
+    fanStatus: false,
     timestamp: 0,
   });
 
@@ -184,7 +183,7 @@ function DashboardContent() {
 
     // 팬 상태 변화 감지
     if (sensorData.fanStatus !== prevData.fanStatus) {
-      if (sensorData.fanStatus === "on") {
+      if (sensorData.fanStatus === true) {
         newEvents.push({
           id: `${Date.now()}_fan_on`,
           type: ActivityEventType.FAN_ON,
@@ -242,7 +241,7 @@ function DashboardContent() {
     }
 
     // Bottle 1 약 부족 경고
-    if (sensorData.bottle1Count < 10 && prevData.bottle1Count >= 10) {
+    if (sensorData.bottle1Count < 5 && prevData.bottle1Count >= 5) {
       newEvents.push({
         id: `${Date.now()}_bottle1_low`,
         type: ActivityEventType.PILL_LOW,
@@ -253,7 +252,7 @@ function DashboardContent() {
     }
 
     // Bottle 2 약 부족 경고
-    if (sensorData.bottle2Count < 10 && prevData.bottle2Count >= 10) {
+    if (sensorData.bottle2Count < 5 && prevData.bottle2Count >= 5) {
       newEvents.push({
         id: `${Date.now()}_bottle2_low`,
         type: ActivityEventType.PILL_LOW,
@@ -264,7 +263,7 @@ function DashboardContent() {
     }
 
     // Bottle 3 약 부족 경고
-    if (sensorData.bottle3Count < 10 && prevData.bottle3Count >= 10) {
+    if (sensorData.bottle3Count < 5 && prevData.bottle3Count >= 5) {
       newEvents.push({
         id: `${Date.now()}_bottle3_low`,
         type: ActivityEventType.PILL_LOW,
@@ -319,7 +318,7 @@ function DashboardContent() {
   const getSystemStatus = (): SystemStatus => {
     if (!sensorData) return SystemStatus.OFFLINE;
     if (sensorData.isDispensing) return SystemStatus.DISPENSING;
-    if (sensorData.fanStatus === "on") return SystemStatus.COOLING;
+    if (sensorData.fanStatus === true) return SystemStatus.COOLING;
     if (sensorData.temperature > 35) return SystemStatus.ERROR;
     return SystemStatus.IDLE;
   };
