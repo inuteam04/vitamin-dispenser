@@ -42,7 +42,7 @@ function DashboardContent() {
     error,
     retry,
   } = useRealtimeData<SensorData>("sensors", {
-    temperature: 0,
+    temparature: 0,
     humidity: 0,
     bottle1Count: 100,
     bottle2Count: 30,
@@ -54,6 +54,10 @@ function DashboardContent() {
   });
 
   // 활동 로그 상태
+  // 마지막 데이터 업데이트 시간
+  const lastUpdateRef = useRef<Date | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+
   const [events, setEvents] = useState<ActivityEvent[]>(() => {
     const now = Date.now();
     return [
@@ -135,6 +139,11 @@ function DashboardContent() {
   useEffect(() => {
     if (!sensorData || loading) return;
 
+    // 데이터가 업데이트될 때마다 현재 시간 저장
+    const now = new Date();
+    lastUpdateRef.current = now;
+    requestAnimationFrame(() => setLastUpdate(now));
+
     const prevData = previousDataRef.current;
 
     // 첫 로드시에는 이벤트 생성하지 않음
@@ -183,7 +192,7 @@ function DashboardContent() {
 
     // 팬 상태 변화 감지
     if (sensorData.fanStatus !== prevData.fanStatus) {
-      const temp = sensorData.temperature ?? 0;
+      const temp = sensorData.temparature ?? 0;
       if (sensorData.fanStatus === true) {
         newEvents.push({
           id: `${Date.now()}_fan_on`,
@@ -204,8 +213,8 @@ function DashboardContent() {
     }
 
     // 온도 경고
-    const currentTemp = sensorData.temperature ?? 0;
-    const prevTemp = prevData.temperature ?? 0;
+    const currentTemp = sensorData.temparature ?? 0;
+    const prevTemp = prevData.temparature ?? 0;
     if (currentTemp > 35 && prevTemp <= 35) {
       newEvents.push({
         id: `${Date.now()}_temp_critical`,
@@ -316,7 +325,7 @@ function DashboardContent() {
     if (!sensorData) return SystemStatus.OFFLINE;
     if (sensorData.isDispensing) return SystemStatus.DISPENSING;
     if (sensorData.fanStatus === true) return SystemStatus.COOLING;
-    if (sensorData.temperature > 35) return SystemStatus.ERROR;
+    if (sensorData.temparature > 35) return SystemStatus.ERROR;
     return SystemStatus.IDLE;
   };
 
@@ -380,12 +389,12 @@ function DashboardContent() {
                 <div className="flex items-baseline gap-2 mb-2">
                   <span
                     className={`text-4xl font-light tracking-tight ${
-                      sensorData && sensorData.temperature > 30
+                      sensorData && sensorData.temparature > 30
                         ? "text-yellow-600 dark:text-yellow-400"
                         : "text-black dark:text-white"
                     }`}
                   >
-                    {sensorData?.temperature?.toFixed(1) ?? "--"}
+                    {sensorData?.temparature?.toFixed(1) ?? "--"}
                   </span>
                   <span className="text-lg text-zinc-400 dark:text-zinc-500 font-light">
                     °C
@@ -426,10 +435,10 @@ function DashboardContent() {
           <SensorCard className="hidden lg:block">
             <SensorCard.Title>Temperature</SensorCard.Title>
             <SensorCard.Value
-              value={sensorData?.temperature?.toFixed(1) ?? "--"}
+              value={sensorData?.temparature?.toFixed(1) ?? "--"}
               unit="°C"
               status={
-                sensorData && sensorData.temperature > 30 ? "warning" : "normal"
+                sensorData && sensorData.temparature > 30 ? "warning" : "normal"
               }
             />
             <SensorCard.Description>Optimal: 15-25°C</SensorCard.Description>
@@ -540,9 +549,7 @@ function DashboardContent() {
         {/* 데이터 갱신 시각 */}
         <footer className="text-center text-zinc-400 dark:text-zinc-600 text-xs font-mono uppercase tracking-wider">
           Last update:{" "}
-          {sensorData?.timestamp
-            ? new Date(sensorData.timestamp).toLocaleTimeString("en-US")
-            : "--"}
+          {lastUpdate ? lastUpdate.toLocaleTimeString("ko-KR") : "--"}
         </footer>
       </div>
     </div>

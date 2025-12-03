@@ -3,7 +3,7 @@
  * Hardware Spec: DHT11/BME280 + Photo Interrupter + IR Proximity
  */
 export interface SensorData {
-  temperature: number; // 섭씨 온도 (°C)
+  temparature: number; // 섭씨 온도 (°C)
   humidity: number; // 상대습도 (%)
   bottle1Count: number; // Bottle 1 남은 알약 개수
   bottle2Count: number; // Bottle 2 남은 알약 개수
