@@ -183,60 +183,57 @@ function DashboardContent() {
 
     // 팬 상태 변화 감지
     if (sensorData.fanStatus !== prevData.fanStatus) {
+      const temp = sensorData.temperature ?? 0;
       if (sensorData.fanStatus === true) {
         newEvents.push({
           id: `${Date.now()}_fan_on`,
           type: ActivityEventType.FAN_ON,
-          message: `냉각 팬 작동 시작 (온도: ${sensorData.temperature.toFixed(
-            1
-          )}°C)`,
+          message: `냉각 팬 작동 시작 (온도: ${temp.toFixed(1)}°C)`,
           timestamp: Date.now(),
-          data: { temperature: sensorData.temperature },
+          data: { temperature: temp },
         });
       } else {
         newEvents.push({
           id: `${Date.now()}_fan_off`,
           type: ActivityEventType.FAN_OFF,
-          message: `냉각 팬 정지 (온도: ${sensorData.temperature.toFixed(
-            1
-          )}°C)`,
+          message: `냉각 팬 정지 (온도: ${temp.toFixed(1)}°C)`,
           timestamp: Date.now(),
-          data: { temperature: sensorData.temperature },
+          data: { temperature: temp },
         });
       }
     }
 
     // 온도 경고
-    if (sensorData.temperature > 35 && prevData.temperature <= 35) {
+    const currentTemp = sensorData.temperature ?? 0;
+    const prevTemp = prevData.temperature ?? 0;
+    if (currentTemp > 35 && prevTemp <= 35) {
       newEvents.push({
         id: `${Date.now()}_temp_critical`,
         type: ActivityEventType.TEMP_CRITICAL,
-        message: `위험: 온도 과열 (${sensorData.temperature.toFixed(1)}°C)`,
+        message: `위험: 온도 과열 (${currentTemp.toFixed(1)}°C)`,
         timestamp: Date.now(),
-        data: { temperature: sensorData.temperature },
+        data: { temperature: currentTemp },
       });
-    } else if (
-      sensorData.temperature > 30 &&
-      sensorData.temperature <= 35 &&
-      prevData.temperature <= 30
-    ) {
+    } else if (currentTemp > 30 && currentTemp <= 35 && prevTemp <= 30) {
       newEvents.push({
         id: `${Date.now()}_temp_warning`,
         type: ActivityEventType.TEMP_WARNING,
-        message: `경고: 온도 상승 (${sensorData.temperature.toFixed(1)}°C)`,
+        message: `경고: 온도 상승 (${currentTemp.toFixed(1)}°C)`,
         timestamp: Date.now(),
-        data: { temperature: sensorData.temperature },
+        data: { temperature: currentTemp },
       });
     }
 
     // 습도 경고
-    if (sensorData.humidity > 70 && prevData.humidity <= 70) {
+    const currentHumidity = sensorData.humidity ?? 0;
+    const prevHumidity = prevData.humidity ?? 0;
+    if (currentHumidity > 70 && prevHumidity <= 70) {
       newEvents.push({
         id: `${Date.now()}_humidity_warning`,
         type: ActivityEventType.HUMIDITY_WARNING,
-        message: `경고: 습도 과다 (${sensorData.humidity.toFixed(1)}%)`,
+        message: `경고: 습도 과다 (${currentHumidity.toFixed(1)}%)`,
         timestamp: Date.now(),
-        data: { humidity: sensorData.humidity },
+        data: { humidity: currentHumidity },
       });
     }
 
@@ -388,7 +385,7 @@ function DashboardContent() {
                         : "text-black dark:text-white"
                     }`}
                   >
-                    {sensorData?.temperature.toFixed(1) ?? "--"}
+                    {sensorData?.temperature?.toFixed(1) ?? "--"}
                   </span>
                   <span className="text-lg text-zinc-400 dark:text-zinc-500 font-light">
                     °C
@@ -412,7 +409,7 @@ function DashboardContent() {
                         : "text-black dark:text-white"
                     }`}
                   >
-                    {sensorData?.humidity.toFixed(1) ?? "--"}
+                    {sensorData?.humidity?.toFixed(1) ?? "--"}
                   </span>
                   <span className="text-lg text-zinc-400 dark:text-zinc-500 font-light">
                     %
@@ -429,7 +426,7 @@ function DashboardContent() {
           <SensorCard className="hidden lg:block">
             <SensorCard.Title>Temperature</SensorCard.Title>
             <SensorCard.Value
-              value={sensorData?.temperature.toFixed(1) ?? "--"}
+              value={sensorData?.temperature?.toFixed(1) ?? "--"}
               unit="°C"
               status={
                 sensorData && sensorData.temperature > 30 ? "warning" : "normal"
@@ -442,7 +439,7 @@ function DashboardContent() {
           <SensorCard className="hidden lg:block">
             <SensorCard.Title>Humidity</SensorCard.Title>
             <SensorCard.Value
-              value={sensorData?.humidity.toFixed(1) ?? "--"}
+              value={sensorData?.humidity?.toFixed(1) ?? "--"}
               unit="%"
               status={
                 sensorData && sensorData.humidity > 70 ? "warning" : "normal"
