@@ -1,5 +1,6 @@
 import { initializeApp, getApps, FirebaseApp } from "firebase/app";
 import { getDatabase, Database } from "firebase/database";
+import { getAuth, Auth } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -18,4 +19,9 @@ if (existingApp) app = existingApp;
 else app = initializeApp(firebaseConfig);
 
 const database: Database = getDatabase(app);
-export { app, database };
+const auth: Auth = getAuth(app);
+
+// 기존 코드 호환을 위한 별칭
+const db = database;
+
+export { app, database, auth, db };

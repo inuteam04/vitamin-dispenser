@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { SensorCard } from "@/components/SensorCard";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ActivityLog } from "@/components/ActivityLog";
@@ -18,6 +19,97 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { UserMenu } from "@/components/UserMenu";
 import { withAuth } from "@/components/withAuth";
 import toast from "react-hot-toast";
+import { DiseaseRule, loadDiseaseRules } from "@/lib/diseaseRules";
+
+// 햄버거 메뉴 컴포넌트
+function HamburgerMenu() {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+        aria-label="메뉴"
+      >
+        <svg
+          className="w-5 h-5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          {isOpen ? (
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M6 18L18 6M6 6l12 12"
+            />
+          ) : (
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M4 6h16M4 12h16M4 18h16"
+            />
+          )}
+        </svg>
+      </button>
+
+      {isOpen && (
+        <>
+          {/* 백드롭 */}
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setIsOpen(false)}
+          />
+          {/* 메뉴 */}
+          <div className="absolute right-0 top-12 z-50 w-48 border border-zinc-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-black shadow-lg overflow-hidden">
+            <nav className="py-2">
+              <Link
+                href="/dashboard"
+                onClick={() => setIsOpen(false)}
+                className="block px-4 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+              >
+                대시보드
+              </Link>
+              <Link
+                href="/analyse"
+                onClick={() => setIsOpen(false)}
+                className="block px-4 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+              >
+                식단 분석
+              </Link>
+              <Link
+                href="/profile"
+                onClick={() => setIsOpen(false)}
+                className="block px-4 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+              >
+                프로필 설정
+              </Link>
+            </nav>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 한국어 지병 선택용 매핑
+ * - ko: 화면에 보이는 라벨
+ * - en: CSV의 disease_entity 값 (영문)
+ */
+const DISEASE_OPTIONS = [
+  { ko: "비만", en: "obesity" },
+  { ko: "고혈압", en: "hypertension" },
+  { ko: "심혈관 질환", en: "cardiovascular disease" },
+  { ko: "골다공증", en: "osteoporosis" },
+  { ko: "암", en: "cancer" },
+  { ko: "요로결석", en: "urinary stones" },
+] as const;
+
+type DiseaseKo = (typeof DISEASE_OPTIONS)[number]["ko"];
 
 /**
  * 메인 대시보드 페이지
@@ -56,11 +148,102 @@ function DashboardContent() {
 
   // 활동 로그 상태
   // 마지막 데이터 업데이트 시간
-  const lastUpdateRef = useRef<Date | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const previousDataRef = useRef<SensorData | null>(null);
+
+  const [diseaseRules, setDiseaseRules] = useState<DiseaseRule[]>([]);
+  const [loadingRules, setLoadingRules] = useState(true);
+  const [rulesError, setRulesError] = useState<string | null>(null);
+
+  const [foodInput, setFoodInput] = useState("");
+  const [selectedDiseases, setSelectedDiseases] = useState<DiseaseKo[]>([]);
+  const [riskResults, setRiskResults] = useState<DiseaseRule[]>([]);
+
+  // 선택된 한국어 지병 -> 영문 키 (CSV disease_entity용)
+  const selectedDiseaseKeys = useMemo(
+    () =>
+      DISEASE_OPTIONS.filter((opt) =>
+        selectedDiseases.includes(opt.ko as DiseaseKo)
+      ).map((opt) => opt.en.toLowerCase()),
+    [selectedDiseases]
+  );
+
+  useEffect(() => {
+    const run = async () => {
+      try {
+        setLoadingRules(true);
+        const rules = await loadDiseaseRules();
+        setDiseaseRules(rules);
+      } catch (err: unknown) {
+        console.error(err);
+        setRulesError(
+          err instanceof Error
+            ? err.message
+            : "지병 데이터 로딩 중 오류가 발생했습니다."
+        );
+      } finally {
+        setLoadingRules(false);
+      }
+    };
+    run();
+  }, []);
+
+  // 지병 선택 토글
+  const toggleDisease = (ko: DiseaseKo) => {
+    setSelectedDiseases((prev) =>
+      prev.includes(ko) ? prev.filter((d) => d !== ko) : [...prev, ko]
+    );
+  };
+
+  // 식단 + 지병 분석
+  const handleAnalyze = () => {
+    if (!foodInput.trim()) {
+      toast.error("먹은 음식을 한 가지 이상 입력해 주세요.");
+      return;
+    }
+    if (selectedDiseaseKeys.length === 0) {
+      toast.error("지병을 한 가지 이상 선택해 주세요.");
+      return;
+    }
+    if (diseaseRules.length === 0) {
+      toast.error("지병 데이터가 아직 준비되지 않았습니다.");
+      return;
+    }
+
+    const foods = foodInput
+      .split(/[,\n]/)
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+
+    const matches = diseaseRules.filter((rule) => {
+      const diseaseMatch = selectedDiseaseKeys.includes(
+        rule.disease_entity.toLowerCase()
+      );
+      const foodMatch = foods.some((f) =>
+        rule.food_entity.toLowerCase().includes(f)
+      );
+      const isRisk =
+        Number(rule.is_cause) === 1 ||
+        rule.sentence.toLowerCase().includes("increase") ||
+        rule.sentence.toLowerCase().includes("risk");
+
+      return diseaseMatch && foodMatch && isRisk;
+    });
+
+    setRiskResults(matches);
+
+    if (matches.length === 0) {
+      toast.success(
+        "현재 입력한 음식과 선택한 지병 기준으로 뚜렷한 위험 항목은 없습니다."
+      );
+    } else {
+      toast.error(
+        "일부 음식이 선택한 지병과 관련된 위험 요인으로 표시되었습니다."
+      );
+    }
+  };
 
   // permission_denied 에러 발생 시 자동 로그아웃
   useEffect(() => {
@@ -82,7 +265,6 @@ function DashboardContent() {
 
     // 데이터가 업데이트될 때마다 현재 시간 저장
     const now = new Date();
-    lastUpdateRef.current = now;
     requestAnimationFrame(() => setLastUpdate(now));
 
     const prevData = previousDataRef.current;
@@ -287,6 +469,7 @@ function DashboardContent() {
               </p>
             </div>
             <div className="flex items-center gap-3">
+              <HamburgerMenu />
               <ThemeToggle />
               <UserMenu />
             </div>
@@ -579,6 +762,128 @@ function DashboardContent() {
         <div className="mb-10">
           <ActivityLog events={events} maxItems={15} />
         </div>
+
+        {/* ====== 식단 & 지병 분석 섹션 ====== */}
+        <section className="mb-10 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6">
+          <h2 className="text-xl font-medium mb-2">식단 & 지병 연관 분석</h2>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+            오늘 먹은 음식을 입력하고, 가지고 있는 지병을 한국어로 선택하면
+            식단과 질병 사이의 위험 가능성을 분석합니다.
+          </p>
+
+          {/* 데이터 로딩/에러 */}
+          {loadingRules && (
+            <p className="text-xs text-zinc-500 mb-2">
+              지병 연관 데이터 불러오는 중…
+            </p>
+          )}
+          {rulesError && (
+            <p className="text-xs text-red-500 mb-2">{rulesError}</p>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            {/* 음식 입력 */}
+            <div>
+              <h3 className="text-sm font-semibold mb-2">오늘 먹은 음식</h3>
+              <p className="text-xs text-zinc-500 mb-2">
+                여러 개일 경우 쉼표(,) 또는 줄바꿈으로 구분해 주세요.
+                <br />
+                예:{" "}
+                <span className="font-mono text-xs">
+                  김치찌개, 삼겹살, 밥, 라면
+                </span>
+              </p>
+              <textarea
+                value={foodInput}
+                onChange={(e) => setFoodInput(e.target.value)}
+                rows={4}
+                className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-500"
+                placeholder="예) 김치찌개, 삼겹살, 밥..."
+              />
+            </div>
+
+            {/* 지병 선택 */}
+            <div>
+              <h3 className="text-sm font-semibold mb-2">지병 선택 (한국어)</h3>
+              <p className="text-xs text-zinc-500 mb-3">
+                현재 가지고 있는 지병을 모두 선택해 주세요.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {DISEASE_OPTIONS.map((opt) => (
+                  <label
+                    key={opt.ko}
+                    className="flex items-center gap-2 text-sm cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      className="h-3 w-3 accent-black dark:accent-white"
+                      checked={selectedDiseases.includes(opt.ko as DiseaseKo)}
+                      onChange={() => toggleDisease(opt.ko as DiseaseKo)}
+                    />
+                    <span>{opt.ko}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end mb-4">
+            <button
+              onClick={handleAnalyze}
+              className="px-5 py-2 rounded-lg bg-black text-white dark:bg-white dark:text-black text-sm font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors"
+            >
+              분석하기
+            </button>
+          </div>
+
+          {/* 분석 결과 */}
+          <div>
+            <h3 className="text-sm font-semibold mb-2">분석 결과</h3>
+            {riskResults.length === 0 ? (
+              <p className="text-xs text-zinc-500">
+                아직 분석된 결과가 없습니다. 음식을 입력하고 지병을 선택한 뒤{" "}
+                <span className="font-semibold">[분석하기]</span>를 눌러주세요.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {riskResults.map((rule, idx) => {
+                  const koDisease =
+                    DISEASE_OPTIONS.find(
+                      (opt) =>
+                        opt.en.toLowerCase() ===
+                        rule.disease_entity.toLowerCase()
+                    )?.ko ?? rule.disease_entity;
+
+                  return (
+                    <div
+                      key={idx}
+                      className="border border-red-300/60 dark:border-red-500/40 rounded-lg p-4 bg-red-50/40 dark:bg-red-950/20"
+                    >
+                      <div className="text-xs text-red-600 dark:text-red-300 font-semibold mb-1">
+                        ⚠ 위험 음식
+                      </div>
+                      <div className="text-sm mb-1">
+                        <span className="font-semibold">
+                          {rule.food_entity || "알 수 없는 음식"}
+                        </span>{" "}
+                        —{" "}
+                        <span className="text-red-700 dark:text-red-200">
+                          {koDisease}
+                        </span>{" "}
+                        과(와) 관련된 위험 요인이 있습니다.
+                      </div>
+                      {rule.sentence && (
+                        <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1">
+                          {rule.sentence}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
 
         {/* 데이터 갱신 시각 */}
         <footer className="text-center text-zinc-400 dark:text-zinc-600 text-xs font-mono uppercase tracking-wider">
