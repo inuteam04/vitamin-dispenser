@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SensorCard } from "@/components/SensorCard";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
