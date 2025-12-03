@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { SensorCard } from "@/components/SensorCard";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ActivityLog } from "@/components/ActivityLog";
+import { ProgressBar, RangeBar } from "@/components/ui/ProgressBar";
 import { useRealtimeData } from "@/lib/hooks/useRealtimeData";
 import { useAuth } from "@/lib/hooks/useAuth";
 import {
@@ -44,8 +45,8 @@ function DashboardContent() {
   } = useRealtimeData<SensorData>("sensors", {
     temparature: 0,
     humidity: 0,
-    bottle1Count: 100,
-    bottle2Count: 30,
+    bottle1Count: 18,
+    bottle2Count: 18,
     bottle3Count: 6,
     lastDispensed: 0,
     isDispensing: false,
@@ -58,67 +59,7 @@ function DashboardContent() {
   const lastUpdateRef = useRef<Date | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
-  const [events, setEvents] = useState<ActivityEvent[]>(() => {
-    const now = Date.now();
-    return [
-      {
-        id: "1",
-        type: ActivityEventType.PILL_DISPENSED,
-        message: "Bottle 2: 약 1개 배출됨 (98 → 97개)",
-        timestamp: now - 5 * 60 * 1000,
-        data: { bottleId: 2, count: 1 },
-      },
-      {
-        id: "2",
-        type: ActivityEventType.FAN_ON,
-        message: "냉각 팬 작동 시작 (온도: 31.2°C)",
-        timestamp: now - 12 * 60 * 1000,
-        data: { temperature: 31.2 },
-      },
-      {
-        id: "3",
-        type: ActivityEventType.TEMP_WARNING,
-        message: "경고: 온도 상승 (30.8°C)",
-        timestamp: now - 15 * 60 * 1000,
-        data: { temperature: 30.8 },
-      },
-      {
-        id: "6",
-        type: ActivityEventType.PILL_DISPENSED,
-        message: "Bottle 1: 약 2개 배출됨 (100 → 98개)",
-        timestamp: now - 35 * 60 * 1000,
-        data: { bottleId: 1, count: 2 },
-      },
-      {
-        id: "7",
-        type: ActivityEventType.FAN_OFF,
-        message: "냉각 팬 정지 (온도: 26.5°C)",
-        timestamp: now - 45 * 60 * 1000,
-        data: { temperature: 26.5 },
-      },
-      {
-        id: "8",
-        type: ActivityEventType.HUMIDITY_WARNING,
-        message: "경고: 습도 과다 (72.3%)",
-        timestamp: now - 1 * 60 * 60 * 1000,
-        data: { humidity: 72.3 },
-      },
-      {
-        id: "9",
-        type: ActivityEventType.TEMP_CRITICAL,
-        message: "위험: 온도 과열 (35.6°C)",
-        timestamp: now - 2 * 60 * 60 * 1000,
-        data: { temperature: 35.6 },
-      },
-      {
-        id: "10",
-        type: ActivityEventType.PILL_LOW,
-        message: "Bottle 3: 약 보충 필요 (남은 개수: 8개)",
-        timestamp: now - 3 * 60 * 60 * 1000,
-        data: { bottleId: 3, pillCount: 8 },
-      },
-    ];
-  });
+  const [events, setEvents] = useState<ActivityEvent[]>([]);
   const previousDataRef = useRef<SensorData | null>(null);
 
   // permission_denied 에러 발생 시 자동 로그아웃
@@ -400,6 +341,15 @@ function DashboardContent() {
                     °C
                   </span>
                 </div>
+                <RangeBar
+                  value={sensorData?.temparature ?? 0}
+                  min={0}
+                  max={50}
+                  optimalMin={15}
+                  optimalMax={25}
+                  warningThreshold={30}
+                  className="mb-2"
+                />
                 <p className="text-xs text-zinc-500 dark:text-zinc-500 uppercase tracking-wider">
                   Optimal: 15-25°C
                 </p>
@@ -424,6 +374,15 @@ function DashboardContent() {
                     %
                   </span>
                 </div>
+                <RangeBar
+                  value={sensorData?.humidity ?? 0}
+                  min={0}
+                  max={100}
+                  optimalMin={40}
+                  optimalMax={60}
+                  warningThreshold={70}
+                  className="mb-2"
+                />
                 <p className="text-xs text-zinc-500 dark:text-zinc-500 uppercase tracking-wider">
                   Optimal: 40-60%
                 </p>
@@ -441,6 +400,15 @@ function DashboardContent() {
                 sensorData && sensorData.temparature > 30 ? "warning" : "normal"
               }
             />
+            <RangeBar
+              value={sensorData?.temparature ?? 0}
+              min={0}
+              max={50}
+              optimalMin={15}
+              optimalMax={25}
+              warningThreshold={30}
+              className="mb-3"
+            />
             <SensorCard.Description>Optimal: 15-25°C</SensorCard.Description>
           </SensorCard>
 
@@ -454,6 +422,15 @@ function DashboardContent() {
                 sensorData && sensorData.humidity > 70 ? "warning" : "normal"
               }
             />
+            <RangeBar
+              value={sensorData?.humidity ?? 0}
+              min={0}
+              max={100}
+              optimalMin={40}
+              optimalMax={60}
+              warningThreshold={70}
+              className="mb-3"
+            />
             <SensorCard.Description>Optimal: 40-60%</SensorCard.Description>
           </SensorCard>
 
@@ -462,78 +439,135 @@ function DashboardContent() {
             <div className="space-y-4">
               {/* Bottle 1 */}
               <div className="pb-4 border-b border-zinc-200 dark:border-zinc-800">
-                <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-2">
-                  Bottle 1
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                    Bottle 1
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <span
+                      className={`text-lg font-light tracking-tight ${
+                        sensorData && sensorData.bottle1Count < 5
+                          ? "text-red-600 dark:text-red-400"
+                          : sensorData && sensorData.bottle1Count < 10
+                          ? "text-yellow-600 dark:text-yellow-400"
+                          : "text-black dark:text-white"
+                      }`}
+                    >
+                      {sensorData?.bottle1Count ?? "--"}
+                    </span>
+                    <span className="text-xs text-zinc-400 dark:text-zinc-500 font-light">
+                      /18
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-baseline gap-2 mb-1">
-                  <span
-                    className={`text-3xl font-light tracking-tight ${
-                      sensorData && sensorData.bottle1Count < 10
-                        ? "text-red-600 dark:text-red-400"
-                        : "text-black dark:text-white"
-                    }`}
-                  >
-                    {sensorData?.bottle1Count ?? "--"}
-                  </span>
-                  <span className="text-sm text-zinc-400 dark:text-zinc-500 font-light">
-                    pills
-                  </span>
-                </div>
+                <ProgressBar
+                  value={sensorData?.bottle1Count ?? 0}
+                  max={18}
+                  status={
+                    sensorData && sensorData.bottle1Count < 5
+                      ? "error"
+                      : sensorData && sensorData.bottle1Count < 10
+                      ? "warning"
+                      : "normal"
+                  }
+                  size="md"
+                  className="mb-1"
+                />
                 <p className="text-xs text-zinc-500 dark:text-zinc-500">
-                  {sensorData && sensorData.bottle1Count < 10
+                  {sensorData && sensorData.bottle1Count < 5
                     ? "Refill required"
+                    : sensorData && sensorData.bottle1Count < 10
+                    ? "Running low"
                     : "Normal"}
                 </p>
               </div>
 
               {/* Bottle 2 */}
               <div className="pb-4 border-b border-zinc-200 dark:border-zinc-800">
-                <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-2">
-                  Bottle 2
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                    Bottle 2
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <span
+                      className={`text-lg font-light tracking-tight ${
+                        sensorData && sensorData.bottle2Count < 5
+                          ? "text-red-600 dark:text-red-400"
+                          : sensorData && sensorData.bottle2Count < 10
+                          ? "text-yellow-600 dark:text-yellow-400"
+                          : "text-black dark:text-white"
+                      }`}
+                    >
+                      {sensorData?.bottle2Count ?? "--"}
+                    </span>
+                    <span className="text-xs text-zinc-400 dark:text-zinc-500 font-light">
+                      /18
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-baseline gap-2 mb-1">
-                  <span
-                    className={`text-3xl font-light tracking-tight ${
-                      sensorData && sensorData.bottle2Count < 10
-                        ? "text-red-600 dark:text-red-400"
-                        : "text-black dark:text-white"
-                    }`}
-                  >
-                    {sensorData?.bottle2Count ?? "--"}
-                  </span>
-                  <span className="text-sm text-zinc-400 dark:text-zinc-500 font-light">
-                    pills
-                  </span>
-                </div>
+                <ProgressBar
+                  value={sensorData?.bottle2Count ?? 0}
+                  max={18}
+                  status={
+                    sensorData && sensorData.bottle2Count < 5
+                      ? "error"
+                      : sensorData && sensorData.bottle2Count < 10
+                      ? "warning"
+                      : "normal"
+                  }
+                  size="md"
+                  className="mb-1"
+                />
                 <p className="text-xs text-zinc-500 dark:text-zinc-500">
-                  {sensorData && sensorData.bottle2Count < 10
+                  {sensorData && sensorData.bottle2Count < 5
                     ? "Refill required"
+                    : sensorData && sensorData.bottle2Count < 10
+                    ? "Running low"
                     : "Normal"}
                 </p>
               </div>
 
               {/* Bottle 3 */}
               <div>
-                <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-2">
-                  Bottle 3
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                    Bottle 3
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <span
+                      className={`text-lg font-light tracking-tight ${
+                        sensorData && sensorData.bottle3Count < 5
+                          ? "text-red-600 dark:text-red-400"
+                          : sensorData && sensorData.bottle3Count < 10
+                          ? "text-yellow-600 dark:text-yellow-400"
+                          : "text-black dark:text-white"
+                      }`}
+                    >
+                      {sensorData?.bottle3Count ?? "--"}
+                    </span>
+                    <span className="text-xs text-zinc-400 dark:text-zinc-500 font-light">
+                      /18
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-baseline gap-2 mb-1">
-                  <span
-                    className={`text-3xl font-light tracking-tight ${
-                      sensorData && sensorData.bottle3Count < 10
-                        ? "text-red-600 dark:text-red-400"
-                        : "text-black dark:text-white"
-                    }`}
-                  >
-                    {sensorData?.bottle3Count ?? "--"}
-                  </span>
-                  <span className="text-sm text-zinc-400 dark:text-zinc-500 font-light">
-                    pills
-                  </span>
-                </div>
+                <ProgressBar
+                  value={sensorData?.bottle3Count ?? 0}
+                  max={18}
+                  status={
+                    sensorData && sensorData.bottle3Count < 5
+                      ? "error"
+                      : sensorData && sensorData.bottle3Count < 10
+                      ? "warning"
+                      : "normal"
+                  }
+                  size="md"
+                  className="mb-1"
+                />
                 <p className="text-xs text-zinc-500 dark:text-zinc-500">
-                  {sensorData && sensorData.bottle3Count < 10
+                  {sensorData && sensorData.bottle3Count < 5
                     ? "Refill required"
+                    : sensorData && sensorData.bottle3Count < 10
+                    ? "Running low"
                     : "Normal"}
                 </p>
               </div>
