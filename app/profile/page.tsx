@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  useState,
-  useEffect,
-  ChangeEvent,
-  FormEvent,
-  useMemo,
-  useRef,
-} from "react";
+import { useState, useEffect, ChangeEvent, FormEvent, useMemo } from "react";
 
 import Link from "next/link";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -23,6 +16,7 @@ import {
   DiseaseRule,
   DiseaseCategory,
 } from "@/lib/diseaseRules";
+import { HamburgerMenu } from "@/components/HamburgerMenu";
 
 // ===== 타입 정의 =====
 type Sex = "male" | "female" | "other" | "";
@@ -69,7 +63,9 @@ export default function ProfilePage() {
   // === 지병 옵션 (CSV 기반 전체) ===
   const [diseaseRules, setDiseaseRules] = useState<DiseaseRule[]>([]);
   const [diseaseLoading, setDiseaseLoading] = useState(true);
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
+    new Set()
+  );
 
   // diseaseRules 로딩
   useEffect(() => {
@@ -102,7 +98,11 @@ export default function ProfilePage() {
   const toggleCategory = (categoryName: string) => {
     setExpandedCategories((prev) => {
       const next = new Set(prev);
-      next.has(categoryName) ? next.delete(categoryName) : next.add(categoryName);
+      if (next.has(categoryName)) {
+        next.delete(categoryName);
+      } else {
+        next.add(categoryName);
+      }
       return next;
     });
   };
@@ -110,7 +110,11 @@ export default function ProfilePage() {
   const toggleDisease = (name: string) => {
     setProfile((prev) => {
       const set = new Set(prev.diseases ?? []);
-      set.has(name) ? set.delete(name) : set.add(name);
+      if (set.has(name)) {
+        set.delete(name);
+      } else {
+        set.add(name);
+      }
       return { ...prev, diseases: Array.from(set) };
     });
   };
@@ -202,17 +206,17 @@ export default function ProfilePage() {
         <div className="max-w-3xl mx-auto px-6 py-6 flex items-center justify-between">
           <h1 className="text-3xl font-light">프로필 설정</h1>
           <div className="flex items-center gap-4">
-            <Link href="/dashboard" className="text-sm text-zinc-500">
-              ← Dashboard
-            </Link>
+            <HamburgerMenu />
             <ThemeToggle />
           </div>
         </div>
       </header>
 
       <main className="max-w-3xl mx-auto px-6 py-8">
-        <form onSubmit={handleSubmit} className="space-y-10 border border-zinc-200 dark:border-zinc-800 rounded-lg p-6">
-
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-10 border border-zinc-200 dark:border-zinc-800 rounded-lg p-6"
+        >
           {/* 기본 정보 */}
           <section className="space-y-3">
             <h2 className="text-lg font-medium">기본 정보</h2>
@@ -224,7 +228,7 @@ export default function ProfilePage() {
                   type="text"
                   value={profile.name ?? ""}
                   onChange={handleChange("name")}
-                  className="w-full px-3 py-2 border rounded bg-transparent"
+                  className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded bg-transparent text-sm"
                 />
               </div>
 
@@ -235,7 +239,7 @@ export default function ProfilePage() {
                   min={0}
                   value={profile.age ?? ""}
                   onChange={handleChange("age")}
-                  className="w-full px-3 py-2 border rounded bg-transparent"
+                  className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded bg-transparent text-sm"
                 />
               </div>
             </div>
@@ -277,7 +281,7 @@ export default function ProfilePage() {
                   type="number"
                   value={profile.heightCm ?? ""}
                   onChange={handleChange("heightCm")}
-                  className="w-full px-3 py-2 border rounded bg-transparent"
+                  className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded bg-transparent text-sm"
                 />
               </div>
 
@@ -287,7 +291,7 @@ export default function ProfilePage() {
                   type="number"
                   value={profile.weightKg ?? ""}
                   onChange={handleChange("weightKg")}
-                  className="w-full px-3 py-2 border rounded bg-transparent"
+                  className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded bg-transparent text-sm"
                 />
               </div>
             </div>
@@ -300,7 +304,7 @@ export default function ProfilePage() {
             <select
               value={profile.activityLevel ?? ""}
               onChange={handleChange("activityLevel")}
-              className="w-full px-3 py-2 border rounded bg-transparent"
+              className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded bg-transparent text-sm"
             >
               <option value="">선택</option>
               <option value="sedentary">거의 운동 안함</option>

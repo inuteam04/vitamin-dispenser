@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { SensorCard } from "@/components/SensorCard";
@@ -17,106 +17,18 @@ import {
 } from "@/lib/types";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { UserMenu } from "@/components/UserMenu";
+import { HamburgerMenu } from "@/components/HamburgerMenu";
 import { withAuth } from "@/components/withAuth";
 import toast from "react-hot-toast";
-import { DiseaseRule, loadDiseaseRules } from "@/lib/diseaseRules";
+import { db } from "@/lib/firebase";
+import { ref, get } from "firebase/database";
 
-// 햄버거 메뉴 컴포넌트 (약 정보 메뉴 포함, 폰트 전부 text-sm 통일)
-function HamburgerMenu() {
-  const [isOpen, setIsOpen] = useState(false);
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
-        aria-label="메뉴"
-      >
-        <svg
-          className="w-5 h-5"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          {isOpen ? (
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M6 18L18 6M6 6l12 12"
-            />
-          ) : (
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M4 6h16M4 12h16M4 18h16"
-            />
-          )}
-        </svg>
-      </button>
-
-      {isOpen && (
-        <>
-          {/* 백드롭 */}
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setIsOpen(false)}
-          />
-          {/* 메뉴 */}
-          <div className="absolute right-0 top-12 z-50 w-48 border border-zinc-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-black shadow-lg overflow-hidden">
-            <nav className="py-2">
-              <Link
-                href="/dashboard"
-                onClick={() => setIsOpen(false)}
-                className="block px-4 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
-              >
-                대시보드
-              </Link>
-              <Link
-                href="/analyse"
-                onClick={() => setIsOpen(false)}
-                className="block px-4 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
-              >
-                식단 분석
-              </Link>
-              <Link
-                href="/profile"
-                onClick={() => setIsOpen(false)}
-                className="block px-4 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
-              >
-                프로필 설정
-              </Link>
-              <Link
-                href="/pills"
-                onClick={() => setIsOpen(false)}
-                className="block px-4 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
-              >
-                약 정보
-              </Link>
-            </nav>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-/**
- * 한국어 지병 선택용 매핑
- * - ko: 화면에 보이는 라벨
- * - en: CSV의 disease_entity 값 (영문)
- */
-const DISEASE_OPTIONS = [
-  { ko: "비만", en: "obesity" },
-  { ko: "고혈압", en: "hypertension" },
-  { ko: "심혈관 질환", en: "cardiovascular disease" },
-  { ko: "골다공증", en: "osteoporosis" },
-  { ko: "암", en: "cancer" },
-  { ko: "요로결석", en: "urinary stones" },
-] as const;
-
-type DiseaseKo = (typeof DISEASE_OPTIONS)[number]["ko"];
+// 약통 설정 타입
+type PillConfig = {
+  bottle1?: string;
+  bottle2?: string;
+  bottle3?: string;
+};
 
 /**
  * 메인 대시보드 페이지
@@ -134,7 +46,7 @@ function DashboardPage() {
 export default withAuth(DashboardPage);
 
 function DashboardContent() {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const router = useRouter();
   const {
     data: sensorData,
@@ -142,14 +54,16 @@ function DashboardContent() {
     error,
     retry,
   } = useRealtimeData<SensorData>("sensors", {
-    temparature: 0,
-    humidity: 0,
     bottle1Count: 18,
     bottle2Count: 18,
     bottle3Count: 6,
+    dht1: { temperature: 0, humidity: 0 },
+    dht2: { temperature: 0, humidity: 0 },
+    dht3: { temperature: 0, humidity: 0 },
     lastDispensed: 0,
     isDispensing: false,
     fanStatus: false,
+    photoDetected: false,
     timestamp: 0,
   });
 
@@ -160,96 +74,38 @@ function DashboardContent() {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const previousDataRef = useRef<SensorData | null>(null);
 
-  const [diseaseRules, setDiseaseRules] = useState<DiseaseRule[]>([]);
-  const [loadingRules, setLoadingRules] = useState(true);
-  const [rulesError, setRulesError] = useState<string | null>(null);
+  // 약통 설정 (약 이름 표시용)
+  const [pillConfig, setPillConfig] = useState<PillConfig>({
+    bottle1: "",
+    bottle2: "",
+    bottle3: "",
+  });
 
-  const [foodInput, setFoodInput] = useState("");
-  const [selectedDiseases, setSelectedDiseases] = useState<DiseaseKo[]>([]);
-  const [riskResults, setRiskResults] = useState<DiseaseRule[]>([]);
-
-  // 선택된 한국어 지병 -> 영문 키 (CSV disease_entity용)
-  const selectedDiseaseKeys = useMemo(
-    () =>
-      DISEASE_OPTIONS.filter((opt) =>
-        selectedDiseases.includes(opt.ko as DiseaseKo)
-      ).map((opt) => opt.en.toLowerCase()),
-    [selectedDiseases]
-  );
-
+  // 약통 설정 로드
   useEffect(() => {
-    const run = async () => {
+    if (!user) return;
+    const loadPillConfig = async () => {
       try {
-        setLoadingRules(true);
-        const rules = await loadDiseaseRules();
-        setDiseaseRules(rules);
-      } catch (err: unknown) {
-        console.error(err);
-        setRulesError(
-          err instanceof Error
-            ? err.message
-            : "지병 데이터 로딩 중 오류가 발생했습니다."
-        );
-      } finally {
-        setLoadingRules(false);
+        const snap = await get(ref(db, `users/${user.uid}/pillConfig`));
+        if (snap.exists()) {
+          const data = snap.val() as PillConfig;
+          setPillConfig({
+            bottle1: data.bottle1 ?? "",
+            bottle2: data.bottle2 ?? "",
+            bottle3: data.bottle3 ?? "",
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load pill config:", err);
       }
     };
-    run();
-  }, []);
+    loadPillConfig();
+  }, [user]);
 
-  // 지병 선택 토글
-  const toggleDisease = (ko: DiseaseKo) => {
-    setSelectedDiseases((prev) =>
-      prev.includes(ko) ? prev.filter((d) => d !== ko) : [...prev, ko]
-    );
-  };
-
-  // 식단 + 지병 분석
-  const handleAnalyze = () => {
-    if (!foodInput.trim()) {
-      toast.error("먹은 음식을 한 가지 이상 입력해 주세요.");
-      return;
-    }
-    if (selectedDiseaseKeys.length === 0) {
-      toast.error("지병을 한 가지 이상 선택해 주세요.");
-      return;
-    }
-    if (diseaseRules.length === 0) {
-      toast.error("지병 데이터가 아직 준비되지 않았습니다.");
-      return;
-    }
-
-    const foods = foodInput
-      .split(/[,\n]/)
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean);
-
-    const matches = diseaseRules.filter((rule) => {
-      const diseaseMatch = selectedDiseaseKeys.includes(
-        rule.disease_entity.toLowerCase()
-      );
-      const foodMatch = foods.some((f) =>
-        rule.food_entity.toLowerCase().includes(f)
-      );
-      const isRisk =
-        Number(rule.is_cause) === 1 ||
-        rule.sentence.toLowerCase().includes("increase") ||
-        rule.sentence.toLowerCase().includes("risk");
-
-      return diseaseMatch && foodMatch && isRisk;
-    });
-
-    setRiskResults(matches);
-
-    if (matches.length === 0) {
-      toast.success(
-        "현재 입력한 음식과 선택한 지병 기준으로 뚜렷한 위험 항목은 없습니다."
-      );
-    } else {
-      toast.error(
-        "일부 음식이 선택한 지병과 관련된 위험 요인으로 표시되었습니다."
-      );
-    }
+  // 약통별 약 이름 가져오기
+  const getPillName = (bottleId: 1 | 2 | 3): string => {
+    const key = `bottle${bottleId}` as keyof PillConfig;
+    return pillConfig[key] || "미설정";
   };
 
   // permission_denied 에러 발생 시 자동 로그아웃
@@ -322,59 +178,74 @@ function DashboardContent() {
 
     // 팬 상태 변화 감지
     if (sensorData.fanStatus !== prevData.fanStatus) {
-      const temp = sensorData.temparature ?? 0;
+      // 평균 온도 계산
+      const avgTemp =
+        ((sensorData.dht1?.temperature ?? 0) +
+          (sensorData.dht2?.temperature ?? 0) +
+          (sensorData.dht3?.temperature ?? 0)) /
+        3;
       if (sensorData.fanStatus === true) {
         newEvents.push({
           id: `${Date.now()}_fan_on`,
           type: ActivityEventType.FAN_ON,
-          message: `냉각 팬 작동 시작 (온도: ${temp.toFixed(1)}°C)`,
+          message: `냉각 팬 작동 시작 (평균 온도: ${avgTemp.toFixed(1)}°C)`,
           timestamp: Date.now(),
-          data: { temperature: temp },
+          data: { temperature: avgTemp },
         });
       } else {
         newEvents.push({
           id: `${Date.now()}_fan_off`,
           type: ActivityEventType.FAN_OFF,
-          message: `냉각 팬 정지 (온도: ${temp.toFixed(1)}°C)`,
+          message: `냉각 팬 정지 (평균 온도: ${avgTemp.toFixed(1)}°C)`,
           timestamp: Date.now(),
-          data: { temperature: temp },
+          data: { temperature: avgTemp },
         });
       }
     }
 
-    // 온도 경고
-    const currentTemp = sensorData.temparature ?? 0;
-    const prevTemp = prevData.temparature ?? 0;
-    if (currentTemp > 35 && prevTemp <= 35) {
-      newEvents.push({
-        id: `${Date.now()}_temp_critical`,
-        type: ActivityEventType.TEMP_CRITICAL,
-        message: `위험: 온도 과열 (${currentTemp.toFixed(1)}°C)`,
-        timestamp: Date.now(),
-        data: { temperature: currentTemp },
-      });
-    } else if (currentTemp > 30 && currentTemp <= 35 && prevTemp <= 30) {
-      newEvents.push({
-        id: `${Date.now()}_temp_warning`,
-        type: ActivityEventType.TEMP_WARNING,
-        message: `경고: 온도 상승 (${currentTemp.toFixed(1)}°C)`,
-        timestamp: Date.now(),
-        data: { temperature: currentTemp },
-      });
-    }
+    // 온도 경고 (각 병별로 체크)
+    const bottles = [
+      { id: 1, current: sensorData.dht1, prev: prevData.dht1 },
+      { id: 2, current: sensorData.dht2, prev: prevData.dht2 },
+      { id: 3, current: sensorData.dht3, prev: prevData.dht3 },
+    ];
 
-    // 습도 경고
-    const currentHumidity = sensorData.humidity ?? 0;
-    const prevHumidity = prevData.humidity ?? 0;
-    if (currentHumidity > 70 && prevHumidity <= 70) {
-      newEvents.push({
-        id: `${Date.now()}_humidity_warning`,
-        type: ActivityEventType.HUMIDITY_WARNING,
-        message: `경고: 습도 과다 (${currentHumidity.toFixed(1)}%)`,
-        timestamp: Date.now(),
-        data: { humidity: currentHumidity },
-      });
-    }
+    bottles.forEach(({ id, current, prev }) => {
+      const currentTemp = current?.temperature ?? 0;
+      const prevTemp = prev?.temperature ?? 0;
+      if (currentTemp > 35 && prevTemp <= 35) {
+        newEvents.push({
+          id: `${Date.now()}_temp_critical_bottle${id}`,
+          type: ActivityEventType.TEMP_CRITICAL,
+          message: `위험: Bottle ${id} 온도 과열 (${currentTemp.toFixed(1)}°C)`,
+          timestamp: Date.now(),
+          data: { temperature: currentTemp, bottleId: id },
+        });
+      } else if (currentTemp > 30 && currentTemp <= 35 && prevTemp <= 30) {
+        newEvents.push({
+          id: `${Date.now()}_temp_warning_bottle${id}`,
+          type: ActivityEventType.TEMP_WARNING,
+          message: `경고: Bottle ${id} 온도 상승 (${currentTemp.toFixed(1)}°C)`,
+          timestamp: Date.now(),
+          data: { temperature: currentTemp, bottleId: id },
+        });
+      }
+
+      // 습도 경고
+      const currentHumidity = current?.humidity ?? 0;
+      const prevHumidity = prev?.humidity ?? 0;
+      if (currentHumidity > 70 && prevHumidity <= 70) {
+        newEvents.push({
+          id: `${Date.now()}_humidity_warning_bottle${id}`,
+          type: ActivityEventType.HUMIDITY_WARNING,
+          message: `경고: Bottle ${id} 습도 과다 (${currentHumidity.toFixed(
+            1
+          )}%)`,
+          timestamp: Date.now(),
+          data: { humidity: currentHumidity, bottleId: id },
+        });
+      }
+    });
 
     // Bottle 1 약 부족 경고
     if (sensorData.bottle1Count < 5 && prevData.bottle1Count >= 5) {
@@ -455,7 +326,13 @@ function DashboardContent() {
     if (!sensorData) return SystemStatus.OFFLINE;
     if (sensorData.isDispensing) return SystemStatus.DISPENSING;
     if (sensorData.fanStatus === true) return SystemStatus.COOLING;
-    if (sensorData.temparature > 35) return SystemStatus.ERROR;
+    // 어느 병이든 35도 초과시 에러
+    const maxTemp = Math.max(
+      sensorData.dht1?.temperature ?? 0,
+      sensorData.dht2?.temperature ?? 0,
+      sensorData.dht3?.temperature ?? 0
+    );
+    if (maxTemp > 35) return SystemStatus.ERROR;
     return SystemStatus.IDLE;
   };
 
@@ -506,260 +383,379 @@ function DashboardContent() {
           </div>
         </div>
 
-        {/* 센서 데이터 그리드 */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
-          {/* 모바일: 온도 + 습도 통합 카드 */}
-          <SensorCard className="lg:hidden">
-            <SensorCard.Title>Environment</SensorCard.Title>
-            <div className="grid grid-cols-2 gap-6">
-              {/* Temperature */}
-              <div>
-                <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-3">
-                  Temperature
+        {/* 센서 데이터 그리드 - 병 중심 카드 */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-10">
+          {/* Bottle 1 카드 */}
+          <SensorCard>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-12 h-12 rounded-full flex items-center justify-center text-xl font-semibold ${
+                    sensorData && sensorData.bottle1Count < 5
+                      ? "bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400"
+                      : sensorData && sensorData.bottle1Count < 10
+                      ? "bg-yellow-100 dark:bg-yellow-900/50 text-yellow-600 dark:text-yellow-400"
+                      : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                  }`}
+                >
+                  1
                 </div>
-                <div className="flex items-baseline gap-2 mb-2">
+                <div>
+                  <div className="text-lg font-medium text-black dark:text-white">
+                    Bottle 1
+                  </div>
+                  <div className="text-sm text-zinc-500 dark:text-zinc-400">
+                    {getPillName(1)}
+                  </div>
+                </div>
+              </div>
+              {sensorData && sensorData.bottle1Count < 5 && (
+                <span className="px-2 py-1 text-xs font-medium bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 rounded-full">
+                  보충 필요
+                </span>
+              )}
+            </div>
+
+            {/* 약 개수 */}
+            <div className="mb-4">
+              <div className="flex items-baseline justify-between mb-2">
+                <span className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                  Pills
+                </span>
+                <div className="flex items-baseline gap-1">
                   <span
-                    className={`text-4xl font-light tracking-tight ${
-                      sensorData && sensorData.temparature > 30
+                    className={`text-3xl font-light tracking-tight ${
+                      sensorData && sensorData.bottle1Count < 5
+                        ? "text-red-600 dark:text-red-400"
+                        : sensorData && sensorData.bottle1Count < 10
                         ? "text-yellow-600 dark:text-yellow-400"
                         : "text-black dark:text-white"
                     }`}
                   >
-                    {sensorData?.temparature?.toFixed(1) ?? "--"}
+                    {sensorData?.bottle1Count ?? "--"}
                   </span>
-                  <span className="text-lg text-zinc-400 dark:text-zinc-500 font-light">
-                    °C
+                  <span className="text-sm text-zinc-400 dark:text-zinc-500">
+                    / 18
                   </span>
                 </div>
+              </div>
+              <ProgressBar
+                value={sensorData?.bottle1Count ?? 0}
+                max={18}
+                status={
+                  sensorData && sensorData.bottle1Count < 5
+                    ? "error"
+                    : sensorData && sensorData.bottle1Count < 10
+                    ? "warning"
+                    : "normal"
+                }
+                size="md"
+              />
+            </div>
+
+            {/* 온습도 */}
+            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-zinc-200 dark:border-zinc-800">
+              <div>
+                <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-1">
+                  Temp
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span
+                    className={`text-xl font-light ${
+                      sensorData && (sensorData.dht1?.temperature ?? 0) > 30
+                        ? "text-yellow-600 dark:text-yellow-400"
+                        : "text-black dark:text-white"
+                    }`}
+                  >
+                    {sensorData?.dht1?.temperature?.toFixed(1) ?? "--"}
+                  </span>
+                  <span className="text-xs text-zinc-400">°C</span>
+                </div>
                 <RangeBar
-                  value={sensorData?.temparature ?? 0}
+                  value={sensorData?.dht1?.temperature ?? 0}
                   min={0}
                   max={50}
                   optimalMin={15}
                   optimalMax={25}
                   warningThreshold={30}
-                  className="mb-2"
+                  className="mt-2"
                 />
-                <p className="text-xs text-zinc-500 dark:text-zinc-500 uppercase tracking-wider">
-                  Optimal: 15-25°C
-                </p>
               </div>
-
-              {/* Humidity */}
               <div>
-                <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-3">
+                <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-1">
                   Humidity
                 </div>
-                <div className="flex items-baseline gap-2 mb-2">
+                <div className="flex items-baseline gap-1">
                   <span
-                    className={`text-4xl font-light tracking-tight ${
-                      sensorData && sensorData.humidity > 70
+                    className={`text-xl font-light ${
+                      sensorData && (sensorData.dht1?.humidity ?? 0) > 70
                         ? "text-yellow-600 dark:text-yellow-400"
                         : "text-black dark:text-white"
                     }`}
                   >
-                    {sensorData?.humidity?.toFixed(1) ?? "--"}
+                    {sensorData?.dht1?.humidity?.toFixed(1) ?? "--"}
                   </span>
-                  <span className="text-lg text-zinc-400 dark:text-zinc-500 font-light">
-                    %
-                  </span>
+                  <span className="text-xs text-zinc-400">%</span>
                 </div>
                 <RangeBar
-                  value={sensorData?.humidity ?? 0}
+                  value={sensorData?.dht1?.humidity ?? 0}
                   min={0}
                   max={100}
                   optimalMin={40}
                   optimalMax={60}
                   warningThreshold={70}
-                  className="mb-2"
+                  className="mt-2"
                 />
-                <p className="text-xs text-zinc-500 dark:text-zinc-500 uppercase tracking-wider">
-                  Optimal: 40-60%
-                </p>
               </div>
             </div>
           </SensorCard>
 
-          {/* 데스크톱: 온도 카드 */}
-          <SensorCard className="hidden lg:block">
-            <SensorCard.Title>Temperature</SensorCard.Title>
-            <SensorCard.Value
-              value={sensorData?.temparature?.toFixed(1) ?? "--"}
-              unit="°C"
-              status={
-                sensorData && sensorData.temparature > 30 ? "warning" : "normal"
-              }
-            />
-            <RangeBar
-              value={sensorData?.temparature ?? 0}
-              min={0}
-              max={50}
-              optimalMin={15}
-              optimalMax={25}
-              warningThreshold={30}
-              className="mb-3"
-            />
-            <SensorCard.Description>Optimal: 15-25°C</SensorCard.Description>
-          </SensorCard>
-
-          {/* 데스크톱: 습도 카드 */}
-          <SensorCard className="hidden lg:block">
-            <SensorCard.Title>Humidity</SensorCard.Title>
-            <SensorCard.Value
-              value={sensorData?.humidity?.toFixed(1) ?? "--"}
-              unit="%"
-              status={
-                sensorData && sensorData.humidity > 70 ? "warning" : "normal"
-              }
-            />
-            <RangeBar
-              value={sensorData?.humidity ?? 0}
-              min={0}
-              max={100}
-              optimalMin={40}
-              optimalMax={60}
-              warningThreshold={70}
-              className="mb-3"
-            />
-            <SensorCard.Description>Optimal: 40-60%</SensorCard.Description>
-          </SensorCard>
-
+          {/* Bottle 2 카드 */}
           <SensorCard>
-            <SensorCard.Title>Pill Bottles</SensorCard.Title>
-            <div className="space-y-4">
-              {/* Bottle 1 */}
-              <div className="pb-4 border-b border-zinc-200 dark:border-zinc-800">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
-                    Bottle 1
-                  </div>
-                  <div className="flex items-baseline gap-1">
-                    <span
-                      className={`text-lg font-light tracking-tight ${
-                        sensorData && sensorData.bottle1Count < 5
-                          ? "text-red-600 dark:text-red-400"
-                          : sensorData && sensorData.bottle1Count < 10
-                          ? "text-yellow-600 dark:text-yellow-400"
-                          : "text-black dark:text-white"
-                      }`}
-                    >
-                      {sensorData?.bottle1Count ?? "--"}
-                    </span>
-                    <span className="text-xs text-zinc-400 dark:text-zinc-500 font-light">
-                      /18
-                    </span>
-                  </div>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-12 h-12 rounded-full flex items-center justify-center text-xl font-semibold ${
+                    sensorData && sensorData.bottle2Count < 5
+                      ? "bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400"
+                      : sensorData && sensorData.bottle2Count < 10
+                      ? "bg-yellow-100 dark:bg-yellow-900/50 text-yellow-600 dark:text-yellow-400"
+                      : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                  }`}
+                >
+                  2
                 </div>
-                <ProgressBar
-                  value={sensorData?.bottle1Count ?? 0}
-                  max={18}
-                  status={
-                    sensorData && sensorData.bottle1Count < 5
-                      ? "error"
-                      : sensorData && sensorData.bottle1Count < 10
-                      ? "warning"
-                      : "normal"
-                  }
-                  size="md"
-                  className="mb-1"
-                />
-                <p className="text-xs text-zinc-500 dark:text-zinc-500">
-                  {sensorData && sensorData.bottle1Count < 5
-                    ? "Refill required"
-                    : sensorData && sensorData.bottle1Count < 10
-                    ? "Running low"
-                    : "Normal"}
-                </p>
-              </div>
-
-              {/* Bottle 2 */}
-              <div className="pb-4 border-b border-zinc-200 dark:border-zinc-800">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                <div>
+                  <div className="text-lg font-medium text-black dark:text-white">
                     Bottle 2
                   </div>
-                  <div className="flex items-baseline gap-1">
-                    <span
-                      className={`text-lg font-light tracking-tight ${
-                        sensorData && sensorData.bottle2Count < 5
-                          ? "text-red-600 dark:text-red-400"
-                          : sensorData && sensorData.bottle2Count < 10
-                          ? "text-yellow-600 dark:text-yellow-400"
-                          : "text-black dark:text-white"
-                      }`}
-                    >
-                      {sensorData?.bottle2Count ?? "--"}
-                    </span>
-                    <span className="text-xs text-zinc-400 dark:text-zinc-500 font-light">
-                      /18
-                    </span>
+                  <div className="text-sm text-zinc-500 dark:text-zinc-400">
+                    {getPillName(2)}
                   </div>
                 </div>
-                <ProgressBar
-                  value={sensorData?.bottle2Count ?? 0}
-                  max={18}
-                  status={
-                    sensorData && sensorData.bottle2Count < 5
-                      ? "error"
-                      : sensorData && sensorData.bottle2Count < 10
-                      ? "warning"
-                      : "normal"
-                  }
-                  size="md"
-                  className="mb-1"
-                />
-                <p className="text-xs text-zinc-500 dark:text-zinc-500">
-                  {sensorData && sensorData.bottle2Count < 5
-                    ? "Refill required"
-                    : sensorData && sensorData.bottle2Count < 10
-                    ? "Running low"
-                    : "Normal"}
-                </p>
               </div>
+              {sensorData && sensorData.bottle2Count < 5 && (
+                <span className="px-2 py-1 text-xs font-medium bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 rounded-full">
+                  보충 필요
+                </span>
+              )}
+            </div>
 
-              {/* Bottle 3 */}
+            {/* 약 개수 */}
+            <div className="mb-4">
+              <div className="flex items-baseline justify-between mb-2">
+                <span className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                  Pills
+                </span>
+                <div className="flex items-baseline gap-1">
+                  <span
+                    className={`text-3xl font-light tracking-tight ${
+                      sensorData && sensorData.bottle2Count < 5
+                        ? "text-red-600 dark:text-red-400"
+                        : sensorData && sensorData.bottle2Count < 10
+                        ? "text-yellow-600 dark:text-yellow-400"
+                        : "text-black dark:text-white"
+                    }`}
+                  >
+                    {sensorData?.bottle2Count ?? "--"}
+                  </span>
+                  <span className="text-sm text-zinc-400 dark:text-zinc-500">
+                    / 18
+                  </span>
+                </div>
+              </div>
+              <ProgressBar
+                value={sensorData?.bottle2Count ?? 0}
+                max={18}
+                status={
+                  sensorData && sensorData.bottle2Count < 5
+                    ? "error"
+                    : sensorData && sensorData.bottle2Count < 10
+                    ? "warning"
+                    : "normal"
+                }
+                size="md"
+              />
+            </div>
+
+            {/* 온습도 */}
+            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-zinc-200 dark:border-zinc-800">
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-1">
+                  Temp
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span
+                    className={`text-xl font-light ${
+                      sensorData && (sensorData.dht2?.temperature ?? 0) > 30
+                        ? "text-yellow-600 dark:text-yellow-400"
+                        : "text-black dark:text-white"
+                    }`}
+                  >
+                    {sensorData?.dht2?.temperature?.toFixed(1) ?? "--"}
+                  </span>
+                  <span className="text-xs text-zinc-400">°C</span>
+                </div>
+                <RangeBar
+                  value={sensorData?.dht2?.temperature ?? 0}
+                  min={0}
+                  max={50}
+                  optimalMin={15}
+                  optimalMax={25}
+                  warningThreshold={30}
+                  className="mt-2"
+                />
+              </div>
+              <div>
+                <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-1">
+                  Humidity
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span
+                    className={`text-xl font-light ${
+                      sensorData && (sensorData.dht2?.humidity ?? 0) > 70
+                        ? "text-yellow-600 dark:text-yellow-400"
+                        : "text-black dark:text-white"
+                    }`}
+                  >
+                    {sensorData?.dht2?.humidity?.toFixed(1) ?? "--"}
+                  </span>
+                  <span className="text-xs text-zinc-400">%</span>
+                </div>
+                <RangeBar
+                  value={sensorData?.dht2?.humidity ?? 0}
+                  min={0}
+                  max={100}
+                  optimalMin={40}
+                  optimalMax={60}
+                  warningThreshold={70}
+                  className="mt-2"
+                />
+              </div>
+            </div>
+          </SensorCard>
+
+          {/* Bottle 3 카드 */}
+          <SensorCard>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-12 h-12 rounded-full flex items-center justify-center text-xl font-semibold ${
+                    sensorData && sensorData.bottle3Count < 5
+                      ? "bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400"
+                      : sensorData && sensorData.bottle3Count < 10
+                      ? "bg-yellow-100 dark:bg-yellow-900/50 text-yellow-600 dark:text-yellow-400"
+                      : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                  }`}
+                >
+                  3
+                </div>
+                <div>
+                  <div className="text-lg font-medium text-black dark:text-white">
                     Bottle 3
                   </div>
-                  <div className="flex items-baseline gap-1">
-                    <span
-                      className={`text-lg font-light tracking-tight ${
-                        sensorData && sensorData.bottle3Count < 5
-                          ? "text-red-600 dark:text-red-400"
-                          : sensorData && sensorData.bottle3Count < 10
-                          ? "text-yellow-600 dark:text-yellow-400"
-                          : "text-black dark:text-white"
-                      }`}
-                    >
-                      {sensorData?.bottle3Count ?? "--"}
-                    </span>
-                    <span className="text-xs text-zinc-400 dark:text-zinc-500 font-light">
-                      /18
-                    </span>
+                  <div className="text-sm text-zinc-500 dark:text-zinc-400">
+                    {getPillName(3)}
                   </div>
                 </div>
-                <ProgressBar
-                  value={sensorData?.bottle3Count ?? 0}
-                  max={18}
-                  status={
-                    sensorData && sensorData.bottle3Count < 5
-                      ? "error"
-                      : sensorData && sensorData.bottle3Count < 10
-                      ? "warning"
-                      : "normal"
-                  }
-                  size="md"
-                  className="mb-1"
-                />
-                <p className="text-xs text-zinc-500 dark:text-zinc-500">
-                  {sensorData && sensorData.bottle3Count < 5
-                    ? "Refill required"
+              </div>
+              {sensorData && sensorData.bottle3Count < 5 && (
+                <span className="px-2 py-1 text-xs font-medium bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 rounded-full">
+                  보충 필요
+                </span>
+              )}
+            </div>
+
+            {/* 약 개수 */}
+            <div className="mb-4">
+              <div className="flex items-baseline justify-between mb-2">
+                <span className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                  Pills
+                </span>
+                <div className="flex items-baseline gap-1">
+                  <span
+                    className={`text-3xl font-light tracking-tight ${
+                      sensorData && sensorData.bottle3Count < 5
+                        ? "text-red-600 dark:text-red-400"
+                        : sensorData && sensorData.bottle3Count < 10
+                        ? "text-yellow-600 dark:text-yellow-400"
+                        : "text-black dark:text-white"
+                    }`}
+                  >
+                    {sensorData?.bottle3Count ?? "--"}
+                  </span>
+                  <span className="text-sm text-zinc-400 dark:text-zinc-500">
+                    / 18
+                  </span>
+                </div>
+              </div>
+              <ProgressBar
+                value={sensorData?.bottle3Count ?? 0}
+                max={18}
+                status={
+                  sensorData && sensorData.bottle3Count < 5
+                    ? "error"
                     : sensorData && sensorData.bottle3Count < 10
-                    ? "Running low"
-                    : "Normal"}
-                </p>
+                    ? "warning"
+                    : "normal"
+                }
+                size="md"
+              />
+            </div>
+
+            {/* 온습도 */}
+            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-zinc-200 dark:border-zinc-800">
+              <div>
+                <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-1">
+                  Temp
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span
+                    className={`text-xl font-light ${
+                      sensorData && (sensorData.dht3?.temperature ?? 0) > 30
+                        ? "text-yellow-600 dark:text-yellow-400"
+                        : "text-black dark:text-white"
+                    }`}
+                  >
+                    {sensorData?.dht3?.temperature?.toFixed(1) ?? "--"}
+                  </span>
+                  <span className="text-xs text-zinc-400">°C</span>
+                </div>
+                <RangeBar
+                  value={sensorData?.dht3?.temperature ?? 0}
+                  min={0}
+                  max={50}
+                  optimalMin={15}
+                  optimalMax={25}
+                  warningThreshold={30}
+                  className="mt-2"
+                />
+              </div>
+              <div>
+                <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-1">
+                  Humidity
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span
+                    className={`text-xl font-light ${
+                      sensorData && (sensorData.dht3?.humidity ?? 0) > 70
+                        ? "text-yellow-600 dark:text-yellow-400"
+                        : "text-black dark:text-white"
+                    }`}
+                  >
+                    {sensorData?.dht3?.humidity?.toFixed(1) ?? "--"}
+                  </span>
+                  <span className="text-xs text-zinc-400">%</span>
+                </div>
+                <RangeBar
+                  value={sensorData?.dht3?.humidity ?? 0}
+                  min={0}
+                  max={100}
+                  optimalMin={40}
+                  optimalMax={60}
+                  warningThreshold={70}
+                  className="mt-2"
+                />
               </div>
             </div>
           </SensorCard>
@@ -770,125 +766,25 @@ function DashboardContent() {
           <ActivityLog events={events} maxItems={15} />
         </div>
 
-        {/* ====== 식단 & 지병 분석 섹션 ====== */}
+        {/* ====== 영양 분석 안내 섹션 ====== */}
         <section className="mb-10 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6">
-          <h2 className="text-xl font-medium mb-2">식단 & 지병 연관 분석</h2>
+          <h2 className="text-xl font-medium mb-2">영양 분석</h2>
           <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
-            오늘 먹은 음식을 입력하고, 가지고 있는 지병을 한국어로 선택하면
-            식단과 질병 사이의 위험 가능성을 분석합니다.
+            오늘 먹은 음식을 입력하고 영양 상태를 분석하여 권장 알약 섭취량을
+            확인할 수 있습니다.
           </p>
-
-          {/* 데이터 로딩/에러 */}
-          {loadingRules && (
-            <p className="text-xs text-zinc-500 mb-2">
-              지병 연관 데이터 불러오는 중…
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm text-zinc-600 dark:text-zinc-300">
+              {"식단 입력과 지병 선택을 통해 "}
+              <span className="font-semibold">맞춤형 영양 분석</span>
+              {"을 받아보세요."}
             </p>
-          )}
-          {rulesError && (
-            <p className="text-xs text-red-500 mb-2">{rulesError}</p>
-          )}
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            {/* 음식 입력 */}
-            <div>
-              <h3 className="text-sm font-semibold mb-2">오늘 먹은 음식</h3>
-              <p className="text-xs text-zinc-500 mb-2">
-                여러 개일 경우 쉼표(,) 또는 줄바꿈으로 구분해 주세요.
-                <br />
-                예:{" "}
-                <span className="font-mono text-xs">
-                  김치찌개, 삼겹살, 밥, 라면
-                </span>
-              </p>
-              <textarea
-                value={foodInput}
-                onChange={(e) => setFoodInput(e.target.value)}
-                rows={4}
-                className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-500"
-                placeholder="예) 김치찌개, 삼겹살, 밥..."
-              />
-            </div>
-
-            {/* 지병 선택 */}
-            <div>
-              <h3 className="text-sm font-semibold mb-2">지병 선택 (한국어)</h3>
-              <p className="text-xs text-zinc-500 mb-3">
-                현재 가지고 있는 지병을 모두 선택해 주세요.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {DISEASE_OPTIONS.map((opt) => (
-                  <label
-                    key={opt.ko}
-                    className="flex items-center gap-2 text-sm cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      className="h-3 w-3 accent-black dark:accent-white"
-                      checked={selectedDiseases.includes(opt.ko as DiseaseKo)}
-                      onChange={() => toggleDisease(opt.ko as DiseaseKo)}
-                    />
-                    <span>{opt.ko}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-end mb-4">
-            <button
-              onClick={handleAnalyze}
-              className="px-5 py-2 rounded-lg bg-black text-white dark:bg-white dark:text-black text-sm font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors"
+            <Link
+              href="/analyse"
+              className="px-4 py-2 rounded-lg bg-black text-white dark:bg-white dark:text-black text-sm font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors whitespace-nowrap"
             >
-              분석하기
-            </button>
-          </div>
-
-          {/* 분석 결과 */}
-          <div>
-            <h3 className="text-sm font-semibold mb-2">분석 결과</h3>
-            {riskResults.length === 0 ? (
-              <p className="text-xs text-zinc-500">
-                아직 분석된 결과가 없습니다. 음식을 입력하고 지병을 선택한 뒤{" "}
-                <span className="font-semibold">[분석하기]</span>를 눌러주세요.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {riskResults.map((rule, idx) => {
-                  const koDisease =
-                    DISEASE_OPTIONS.find(
-                      (opt) =>
-                        opt.en.toLowerCase() ===
-                        rule.disease_entity.toLowerCase()
-                    )?.ko ?? rule.disease_entity;
-
-                  return (
-                    <div
-                      key={idx}
-                      className="border border-red-300/60 dark:border-red-500/40 rounded-lg p-4 bg-red-50/40 dark:bg-red-950/20"
-                    >
-                      <div className="text-xs text-red-600 dark:text-red-300 font-semibold mb-1">
-                        ⚠ 위험 음식
-                      </div>
-                      <div className="text-sm mb-1">
-                        <span className="font-semibold">
-                          {rule.food_entity || "알 수 없는 음식"}
-                        </span>{" "}
-                        —{" "}
-                        <span className="text-red-700 dark:text-red-200">
-                          {koDisease}
-                        </span>{" "}
-                        과(와) 관련된 위험 요인이 있습니다.
-                      </div>
-                      {rule.sentence && (
-                        <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1">
-                          {rule.sentence}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+              영양 분석하기
+            </Link>
           </div>
         </section>
 
@@ -923,4 +819,3 @@ function DashboardContent() {
     </div>
   );
 }
-  

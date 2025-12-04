@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  useState,
-  useMemo,
-  useEffect,
-  useRef,
-  ChangeEvent,
-} from "react";
-import Link from "next/link";
+import { useState, useMemo, useEffect, useRef, ChangeEvent } from "react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { loadFoodDb, FoodRow, SelectedFood } from "@/lib/foodData";
 import {
@@ -20,6 +13,19 @@ import {
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { ref, get, set } from "firebase/database";
+import { HamburgerMenu } from "@/components/HamburgerMenu";
+import { useDeviceControl } from "@/lib/hooks/useDeviceControl";
+import { useRealtimeData } from "@/lib/hooks/useRealtimeData";
+import { SensorData } from "@/lib/types";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Cell,
+} from "recharts";
 
 // ===== 타입 정의 (프로필용) =====
 type Sex = "male" | "female" | "other" | "";
@@ -98,6 +104,79 @@ function getFoodKcalPer100g(row: FoodRow): number {
   ]);
 }
 
+// 음식 100g당 탄수화물(g)
+function getCarbsPer100g(row: FoodRow): number {
+  return getNumberField(row, [
+    "carbs",
+    "Carbs",
+    "CARBS",
+    "carbohydrate",
+    "Carbohydrate",
+    "CARBOHYDRATE",
+    "탄수화물(g)",
+    "탄수화물",
+    "carb_g",
+    "CHO_G",
+  ]);
+}
+
+// 음식 100g당 단백질(g)
+function getProteinPer100g(row: FoodRow): number {
+  return getNumberField(row, [
+    "protein",
+    "Protein",
+    "PROTEIN",
+    "단백질(g)",
+    "단백질",
+    "protein_g",
+    "PROT_G",
+  ]);
+}
+
+// 음식 100g당 지방(g)
+function getFatPer100g(row: FoodRow): number {
+  return getNumberField(row, [
+    "fat",
+    "Fat",
+    "FAT",
+    "lipid",
+    "Lipid",
+    "지방(g)",
+    "지방",
+    "fat_g",
+    "FAT_G",
+  ]);
+}
+
+// 영양소 타입
+type NutrientKey = "kcal" | "carb" | "protein" | "fat";
+type Nutrition = Record<NutrientKey, number>;
+
+interface NutrientStat {
+  key: NutrientKey;
+  label: string;
+  required: number;
+  intake: number;
+  percent: number;
+}
+
+// RDA 기준 영양소 통계 생성
+function buildNutrientStats(rda: Nutrition, intake: Nutrition): NutrientStat[] {
+  const items: { key: NutrientKey; label: string }[] = [
+    { key: "kcal", label: "열량" },
+    { key: "carb", label: "탄수화물" },
+    { key: "protein", label: "단백질" },
+    { key: "fat", label: "지방" },
+  ];
+
+  return items.map(({ key, label }) => {
+    const required = rda[key] ?? 0;
+    const taken = intake[key] ?? 0;
+    const percent = required > 0 ? Math.round((taken / required) * 100) : 0;
+    return { key, label, required, intake: taken, percent };
+  });
+}
+
 // 프로필 기반 권장 칼로리 계산
 function estimateCalorieNeeds(profile: UserProfile | null) {
   if (!profile) {
@@ -123,12 +202,7 @@ function estimateCalorieNeeds(profile: UserProfile | null) {
   const factor = activityMap[activityLevel ?? ""] ?? 1.2;
 
   if (!age || !heightCm || !weightKg || !sex) {
-    const fallback =
-      sex === "female"
-        ? 1800
-        : sex === "male"
-        ? 2200
-        : 2000;
+    const fallback = sex === "female" ? 1800 : sex === "male" ? 2200 : 2000;
     return {
       recommended: fallback,
       bmr: null,
@@ -151,7 +225,8 @@ function estimateCalorieNeeds(profile: UserProfile | null) {
     recommended: tdee,
     bmr: Math.round(bmr),
     activityFactor: factor,
-    reason: "Mifflin-St Jeor 공식과 활동량을 이용해 계산한 예상 일일 필요 열량입니다.",
+    reason:
+      "Mifflin-St Jeor 공식과 활동량을 이용해 계산한 예상 일일 필요 열량입니다.",
     fallback: null,
   };
 }
@@ -169,9 +244,7 @@ function computePillRecommendations(
 
   const recommended = calorieNeeds.recommended ?? calorieNeeds.fallback ?? 2000;
   const ratio =
-    totalCalories > 0 && recommended > 0
-      ? totalCalories / recommended
-      : 1;
+    totalCalories > 0 && recommended > 0 ? totalCalories / recommended : 1;
 
   const hasHeartIssue = selectedDiseases.some(
     (d) =>
@@ -186,9 +259,7 @@ function computePillRecommendations(
       d.toLowerCase().includes("osteo")
   );
   const hasAnemia = selectedDiseases.some(
-    (d) =>
-      d.includes("빈혈") ||
-      d.toLowerCase().includes("anemia")
+    (d) => d.includes("빈혈") || d.toLowerCase().includes("anemia")
   );
 
   const addRec = (
@@ -210,10 +281,13 @@ function computePillRecommendations(
   bottleNames.forEach(({ id, name }) => {
     if (!name) return;
 
-    let count = 1;
+    const count = 1;
     let reason = "일반적인 1일 권장량 기준 1정을 권장합니다.";
 
-    if (ratio < 0.8 && (name.includes("종합비타민") || name.includes("비타민"))) {
+    if (
+      ratio < 0.8 &&
+      (name.includes("종합비타민") || name.includes("비타민"))
+    ) {
       reason =
         "오늘 전체 섭취 열량이 권장량보다 적어, 부족한 영양 보충을 위해 1정을 권장합니다.";
     }
@@ -228,7 +302,10 @@ function computePillRecommendations(
         "뼈 건강 관련 질환이 선택되어 있어, 비타민 D 1정을 보조용으로 권장합니다.";
     }
 
-    if (hasAnemia && (name.includes("철분") || name.toLowerCase().includes("iron"))) {
+    if (
+      hasAnemia &&
+      (name.includes("철분") || name.toLowerCase().includes("iron"))
+    ) {
       reason =
         "빈혈 관련 질환이 선택되어 있어, 철분 1정을 보조용으로 권장합니다.";
     }
@@ -265,6 +342,9 @@ export default function AnalysisPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
 
+  // 지병 섹션 접기/펼치기
+  const [isDiseaseExpanded, setIsDiseaseExpanded] = useState(true);
+
   // 유저 & 프로필
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -278,6 +358,40 @@ export default function AnalysisPage() {
   const [isDispensing, setIsDispensing] = useState(false);
   const [dispenseMessage, setDispenseMessage] = useState<string | null>(null);
   const [dispenseError, setDispenseError] = useState<string | null>(null);
+
+  // 개별 약통 배출용 hook
+  const { dispense, isExecuting, lastError } = useDeviceControl();
+  const [singleDispenseMessage, setSingleDispenseMessage] = useState<
+    string | null
+  >(null);
+
+  // 실시간 센서 데이터 (약 개수 확인용)
+  const { data: sensorData } = useRealtimeData<SensorData>("sensors", {
+    bottle1Count: 0,
+    bottle2Count: 0,
+    bottle3Count: 0,
+    dht1: { temperature: 0, humidity: 0 },
+    dht2: { temperature: 0, humidity: 0 },
+    dht3: { temperature: 0, humidity: 0 },
+    lastDispensed: 0,
+    isDispensing: false,
+    fanStatus: false,
+    photoDetected: false,
+    timestamp: 0,
+  });
+
+  // 약통별 남은 개수 가져오기
+  const getBottleCount = (bottleId: 1 | 2 | 3): number => {
+    if (!sensorData) return 0;
+    switch (bottleId) {
+      case 1:
+        return sensorData.bottle1Count ?? 0;
+      case 2:
+        return sensorData.bottle2Count ?? 0;
+      case 3:
+        return sensorData.bottle3Count ?? 0;
+    }
+  };
 
   // 음식 DB 로드
   useEffect(() => {
@@ -363,7 +477,10 @@ export default function AnalysisPage() {
           setPillConfig(null);
         }
       } catch (err) {
-        console.error("Failed to load profile / pillConfig in analyse page", err);
+        console.error(
+          "Failed to load profile / pillConfig in analyse page",
+          err
+        );
         setProfile(null);
         setPillConfig(null);
       } finally {
@@ -456,26 +573,32 @@ export default function AnalysisPage() {
     );
   };
 
-  // 음식 총 섭취 열량
+  // 음식 총 섭취 영양소
   const totalNutrition = useMemo(() => {
     let kcal = 0;
+    let carbs = 0;
+    let protein = 0;
+    let fat = 0;
 
     selectedFoods.forEach((item) => {
-      const per100 = getFoodKcalPer100g(item.food);
       const g = item.grams || 0;
-      kcal += (per100 * g) / 100;
+      const factor = g / 100;
+      kcal += getFoodKcalPer100g(item.food) * factor;
+      carbs += getCarbsPer100g(item.food) * factor;
+      protein += getProteinPer100g(item.food) * factor;
+      fat += getFatPer100g(item.food) * factor;
     });
 
     return {
       calories: Math.round(kcal),
+      carbs: Math.round(carbs * 10) / 10,
+      protein: Math.round(protein * 10) / 10,
+      fat: Math.round(fat * 10) / 10,
     };
   }, [selectedFoods]);
 
   // 프로필 기반 권장 칼로리
-  const calorieNeeds = useMemo(
-    () => estimateCalorieNeeds(profile),
-    [profile]
-  );
+  const calorieNeeds = useMemo(() => estimateCalorieNeeds(profile), [profile]);
 
   // 분석 실행
   const handleAnalyze = () => {
@@ -494,11 +617,35 @@ export default function AnalysisPage() {
     calorieNeeds.recommended && totalNutrition.calories > 0
       ? Math.min(
           999,
-          Math.round(
-            (totalNutrition.calories / calorieNeeds.recommended) * 100
-          )
+          Math.round((totalNutrition.calories / calorieNeeds.recommended) * 100)
         )
       : null;
+
+  // 권장량 (성인 기준 기본값, 프로필 기반 확장 가능)
+  const userRda: Nutrition = useMemo(
+    () => ({
+      kcal: calorieNeeds.recommended ?? calorieNeeds.fallback ?? 2000,
+      carb: 300,
+      protein: 55,
+      fat: 70,
+    }),
+    [calorieNeeds]
+  );
+
+  const intake: Nutrition = useMemo(
+    () => ({
+      kcal: totalNutrition.calories,
+      carb: totalNutrition.carbs,
+      protein: totalNutrition.protein,
+      fat: totalNutrition.fat,
+    }),
+    [totalNutrition]
+  );
+
+  const nutrientStats = useMemo(
+    () => buildNutrientStats(userRda, intake),
+    [userRda, intake]
+  );
 
   // 알약 추천 계산
   const pillRecommendations = useMemo(
@@ -530,10 +677,7 @@ export default function AnalysisPage() {
       setIsDispensing(true);
 
       const ts = Date.now();
-      const commandRef = ref(
-        db,
-        `devices/${user.uid}/dispenseRequests/${ts}`
-      );
+      const commandRef = ref(db, `devices/${user.uid}/dispenseRequests/${ts}`);
 
       await set(commandRef, {
         createdAt: ts,
@@ -558,6 +702,32 @@ export default function AnalysisPage() {
     }
   };
 
+  // 개별 약통 배출 요청 (useDeviceControl hook 사용)
+  const handleSingleDispense = async (
+    bottleId: 1 | 2 | 3,
+    count: number,
+    pillName: string
+  ) => {
+    setSingleDispenseMessage(null);
+
+    if (!user) {
+      setSingleDispenseMessage("로그인 후 사용 가능합니다.");
+      return;
+    }
+
+    try {
+      await dispense(bottleId, count);
+      setSingleDispenseMessage(
+        `${pillName} ${count}정 배출 요청 완료! (Bottle ${bottleId})`
+      );
+    } catch (err) {
+      console.error("Failed to dispense:", err);
+      setSingleDispenseMessage(
+        `배출 실패: ${lastError?.message || "알 수 없는 오류"}`
+      );
+    }
+  };
+
   return (
     <div className="min-h-screen bg-white dark:bg-black text-black dark:text-white">
       {/* 헤더 */}
@@ -570,7 +740,8 @@ export default function AnalysisPage() {
             </p>
             {user && !profileLoading && (
               <p className="text-xs text-zinc-400 mt-1">
-                프로필에 저장된 키·몸무게·활동량을 사용해 권장 열량과 비교합니다.
+                프로필에 저장된 키·몸무게·활동량을 사용해 권장 열량과
+                비교합니다.
               </p>
             )}
             {!user && (
@@ -581,12 +752,7 @@ export default function AnalysisPage() {
             )}
           </div>
           <div className="flex items-center gap-4">
-            <Link
-              href="/dashboard"
-              className="text-sm text-zinc-500 hover:text-black dark:hover:text-white transition-colors"
-            >
-              ← Dashboard
-            </Link>
+            <HamburgerMenu />
             <ThemeToggle />
           </div>
         </div>
@@ -671,107 +837,159 @@ export default function AnalysisPage() {
         </section>
 
         {/* 지병 선택 섹션 */}
-        <section className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-6">
-          <h2 className="text-lg font-medium mb-4">지병 선택 (선택사항)</h2>
-          <p className="text-sm text-zinc-500 mb-4">
-            해당되는 질환이 있으면 선택하세요. 관련 주의사항을 안내해드립니다.
-          </p>
+        <section className="border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden">
+          {/* 섹션 헤더 (접기/펼치기) */}
+          <button
+            type="button"
+            onClick={() => setIsDiseaseExpanded(!isDiseaseExpanded)}
+            className="w-full px-6 py-4 flex items-center justify-between bg-zinc-50 dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+          >
+            <div>
+              <h2 className="text-lg font-medium text-left">
+                지병 선택 (선택사항)
+              </h2>
+              <p className="text-sm text-zinc-500 text-left mt-1">
+                해당되는 질환이 있으면 선택하세요. 관련 주의사항을
+                안내해드립니다.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              {selectedDiseases.length > 0 && (
+                <span className="px-2 py-0.5 bg-black dark:bg-white text-white dark:text-black text-xs rounded-full">
+                  {selectedDiseases.length}개 선택
+                </span>
+              )}
+              <span
+                className={`text-zinc-400 transition-transform ${
+                  isDiseaseExpanded ? "rotate-180" : ""
+                }`}
+              >
+                ▼
+              </span>
+            </div>
+          </button>
 
-          {diseaseLoading ? (
-            <p className="text-sm text-zinc-500">지병 목록 로딩 중...</p>
-          ) : diseaseCategories.length === 0 ? (
-            <p className="text-sm text-zinc-500">지병 데이터가 없습니다.</p>
-          ) : (
-            <div className="space-y-3">
-              {diseaseCategories.map((category) => {
-                const isExpanded = expandedCategories.has(category.name);
-                const selectedCount = getCategorySelectedCount(category);
+          {/* 접히는 콘텐츠 */}
+          {isDiseaseExpanded && (
+            <div className="p-6 border-t border-zinc-200 dark:border-zinc-800">
+              {diseaseLoading ? (
+                <p className="text-sm text-zinc-500">지병 목록 로딩 중...</p>
+              ) : diseaseCategories.length === 0 ? (
+                <p className="text-sm text-zinc-500">지병 데이터가 없습니다.</p>
+              ) : (
+                <div className="space-y-3">
+                  {diseaseCategories.map((category) => {
+                    const isExpanded = expandedCategories.has(category.name);
+                    const selectedCount = getCategorySelectedCount(category);
 
-                return (
-                  <div
-                    key={category.name}
-                    className="border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden"
-                  >
-                    {/* 카테고리 헤더 */}
-                    <button
-                      type="button"
-                      onClick={() => toggleCategory(category.name)}
-                      className="w-full px-4 py-3 flex items-center justify-between bg-zinc-50 dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-lg">{category.icon}</span>
-                        <span className="font-medium text-sm">
-                          {category.name}
-                        </span>
-                        <span className="text-xs text-zinc-500">
-                          ({category.diseases.length}개)
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        {selectedCount > 0 && (
-                          <span className="px-2 py-0.5 bg-black dark:bg-white text-white dark:text-black text-xs rounded-full">
-                            {selectedCount}개 선택
-                          </span>
-                        )}
-                        <span
-                          className={`text-zinc-400 transition-transform ${
-                            isExpanded ? "rotate-180" : ""
-                          }`}
+                    return (
+                      <div
+                        key={category.name}
+                        className="border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden"
+                      >
+                        {/* 카테고리 헤더 */}
+                        <button
+                          type="button"
+                          onClick={() => toggleCategory(category.name)}
+                          className="w-full px-4 py-3 flex items-center justify-between bg-zinc-50 dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                         >
-                          ▼
-                        </span>
-                      </div>
-                    </button>
+                          <div className="flex items-center gap-3">
+                            <span className="text-lg">{category.icon}</span>
+                            <span className="font-medium text-sm">
+                              {category.name}
+                            </span>
+                            <span className="text-xs text-zinc-500">
+                              ({category.diseases.length}개)
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            {selectedCount > 0 && (
+                              <span className="px-2 py-0.5 bg-black dark:bg-white text-white dark:text-black text-xs rounded-full">
+                                {selectedCount}개 선택
+                              </span>
+                            )}
+                            <span
+                              className={`text-zinc-400 transition-transform ${
+                                isExpanded ? "rotate-180" : ""
+                              }`}
+                            >
+                              ▼
+                            </span>
+                          </div>
+                        </button>
 
-                    {/* 질환 목록 */}
-                    {isExpanded && (
-                      <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-2 border-t border-zinc-200 dark:border-zinc-800">
-                        {category.diseases.map((name) => (
-                          <label
-                            key={name}
-                            className={`flex items-center gap-2 text-sm cursor-pointer p-2 rounded transition-colors ${
-                              selectedDiseases.includes(name)
-                                ? "bg-zinc-100 dark:bg-zinc-800"
-                                : "hover:bg-zinc-50 dark:hover:bg-zinc-900"
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedDiseases.includes(name)}
-                              onChange={() => toggleDisease(name)}
-                              className="w-4 h-4 accent-black dark:accent-white"
-                            />
-                            <span>{name}</span>
-                          </label>
-                        ))}
+                        {/* 질환 목록 */}
+                        {isExpanded && (
+                          <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-2 border-t border-zinc-200 dark:border-zinc-800">
+                            {category.diseases.map((name) => (
+                              <label
+                                key={name}
+                                className={`flex items-center gap-2 text-sm cursor-pointer p-2 rounded transition-colors ${
+                                  selectedDiseases.includes(name)
+                                    ? "bg-zinc-100 dark:bg-zinc-800"
+                                    : "hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={selectedDiseases.includes(name)}
+                                  onChange={() => toggleDisease(name)}
+                                  className="w-4 h-4 accent-black dark:accent-white"
+                                />
+                                <span>{name}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    )}
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* 선택된 질환 표시 */}
+              {selectedDiseases.length > 0 && (
+                <div className="mt-4 p-3 bg-zinc-50 dark:bg-zinc-900 rounded-lg">
+                  <p className="text-xs text-zinc-500 mb-2">선택된 질환:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedDiseases.map((d) => (
+                      <span
+                        key={d}
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded text-xs"
+                      >
+                        {d}
+                        <button
+                          type="button"
+                          onClick={() => toggleDisease(d)}
+                          className="text-zinc-400 hover:text-red-500 ml-1"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
                   </div>
-                );
-              })}
+                </div>
+              )}
             </div>
           )}
 
-          {/* 선택된 질환 표시 */}
-          {selectedDiseases.length > 0 && (
-            <div className="mt-4 p-3 bg-zinc-50 dark:bg-zinc-900 rounded-lg">
-              <p className="text-xs text-zinc-500 mb-2">선택된 질환:</p>
+          {/* 접혀있을 때 선택된 질환 미리보기 */}
+          {!isDiseaseExpanded && selectedDiseases.length > 0 && (
+            <div className="px-6 py-3 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50">
               <div className="flex flex-wrap gap-2">
-                {selectedDiseases.map((d) => (
+                {selectedDiseases.slice(0, 5).map((d) => (
                   <span
                     key={d}
-                    className="inline-flex items-center gap-1 px-2 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded text-xs"
+                    className="px-2 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded text-xs"
                   >
                     {d}
-                    <button
-                      type="button"
-                      onClick={() => toggleDisease(d)}
-                      className="text-zinc-400 hover:text-red-500 ml-1"
-                    >
-                      ×
-                    </button>
                   </span>
                 ))}
+                {selectedDiseases.length > 5 && (
+                  <span className="px-2 py-1 text-xs text-zinc-500">
+                    +{selectedDiseases.length - 5}개 더
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -790,35 +1008,230 @@ export default function AnalysisPage() {
 
         {/* 분석 결과 */}
         {hasAnalyzed && !isAnalyzing && (
-          <section className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-6 space-y-4">
-            <h2 className="text-lg font-medium mb-2">분석 결과</h2>
+          <section className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-6 space-y-6">
+            <h2 className="text-lg font-medium">분석 결과</h2>
 
-            {/* 상단 요약 */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="text-3xl md:text-4xl">✓</div>
-                <div>
-                  <p className="text-zinc-600 dark:text-zinc-300 text-sm">
-                    선택한 음식 기준으로{" "}
-                    <span className="font-semibold">
-                      총 {totalGrams}g,{" "}
-                      {totalNutrition.calories > 0
-                        ? `${totalNutrition.calories} kcal`
-                        : "열량 정보 없음"}
-                    </span>{" "}
-                    을 섭취했습니다.
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">
-                    지병과 알레르기 정보는 참고용이며, 실제 진단이나 처방을
-                    대체하지 않습니다.
-                  </p>
-                </div>
+            {/* 상단 요약 카드 */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 text-center">
+                <p className="text-xs text-zinc-500 mb-1">총 섭취량</p>
+                <p className="text-2xl font-light">{totalGrams}</p>
+                <p className="text-xs text-zinc-400">g</p>
+              </div>
+              <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 text-center">
+                <p className="text-xs text-zinc-500 mb-1">열량</p>
+                <p className="text-2xl font-light">{totalNutrition.calories}</p>
+                <p className="text-xs text-zinc-400">kcal</p>
+              </div>
+              <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 text-center">
+                <p className="text-xs text-zinc-500 mb-1">탄수화물</p>
+                <p className="text-2xl font-light">{totalNutrition.carbs}</p>
+                <p className="text-xs text-zinc-400">g</p>
+              </div>
+              <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 text-center">
+                <p className="text-xs text-zinc-500 mb-1">단백질</p>
+                <p className="text-2xl font-light">{totalNutrition.protein}</p>
+                <p className="text-xs text-zinc-400">g</p>
               </div>
             </div>
 
-            {/* 권장 섭취량 비교 */}
-            <div className="mt-2 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 bg-zinc-50/60 dark:bg-zinc-900/40">
-              <h3 className="text-sm font-semibold mb-2">
+            {/* 영양소 비율 그래프 */}
+            <div
+              className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 select-none outline-none focus:outline-none"
+              tabIndex={-1}
+            >
+              <h3 className="text-sm font-semibold mb-1">
+                권장량 대비 섭취 비율
+              </h3>
+              <p className="text-xs text-zinc-500 mb-4">
+                100%가 권장량 충족입니다. 80% 미만은 부족, 120% 초과는 과다
+                섭취입니다.
+              </p>
+              <div
+                className="h-64 outline-none focus:outline-none"
+                style={{ outline: "none" }}
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={nutrientStats}
+                    layout="vertical"
+                    margin={{ top: 5, right: 30, left: 60, bottom: 5 }}
+                    style={{ outline: "none" }}
+                  >
+                    <defs>
+                      {/* 흰색 발광 효과용 필터 */}
+                      <filter
+                        id="glow-white"
+                        x="-50%"
+                        y="-50%"
+                        width="200%"
+                        height="200%"
+                      >
+                        <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+                        <feFlood
+                          floodColor="#ffffff"
+                          floodOpacity="0.6"
+                          result="glowColor"
+                        />
+                        <feComposite
+                          in="glowColor"
+                          in2="coloredBlur"
+                          operator="in"
+                          result="softGlow"
+                        />
+                        <feMerge>
+                          <feMergeNode in="softGlow" />
+                          <feMergeNode in="SourceGraphic" />
+                        </feMerge>
+                      </filter>
+                    </defs>
+                    <XAxis
+                      type="number"
+                      domain={[
+                        0,
+                        (dataMax: number) => Math.max(150, dataMax + 20),
+                      ]}
+                      tick={{ fontSize: 11 }}
+                      tickFormatter={(v) => `${v}%`}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="label"
+                      tick={{ fontSize: 12 }}
+                      width={60}
+                    />
+                    <Tooltip
+                      cursor={false}
+                      content={({ active, payload }) => {
+                        if (!active || !payload || !payload[0]) return null;
+                        const stat = payload[0].payload as NutrientStat;
+                        return (
+                          <div className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 shadow-lg">
+                            <p className="text-sm font-medium text-black dark:text-white">
+                              {stat.label}
+                            </p>
+                            <p className="text-xs text-zinc-600 dark:text-zinc-300 mt-1">
+                              {stat.intake} / {stat.required} ({stat.percent}%)
+                            </p>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Bar
+                      dataKey="percent"
+                      radius={[0, 4, 4, 0]}
+                      style={{ cursor: "default", outline: "none" }}
+                    >
+                      {nutrientStats.map((entry, index) => {
+                        const color =
+                          entry.percent < 80
+                            ? "#10b981"
+                            : entry.percent <= 120
+                            ? "#f59e0b"
+                            : "#ef4444";
+                        return (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={color}
+                            style={{
+                              outline: "none",
+                              transition: "filter 0.2s ease",
+                            }}
+                            onMouseEnter={(e) => {
+                              (e.target as SVGElement).style.filter =
+                                "url(#glow-white)";
+                            }}
+                            onMouseLeave={(e) => {
+                              (e.target as SVGElement).style.filter = "none";
+                            }}
+                          />
+                        );
+                      })}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              {/* 범례 */}
+              <div className="flex items-center justify-center gap-6 mt-4 text-xs text-zinc-500">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded bg-emerald-500" />
+                  부족 (&lt;80%)
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded bg-amber-500" />
+                  적정 (80~120%)
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded bg-red-500" />
+                  과다 (&gt;120%)
+                </span>
+              </div>
+            </div>
+
+            {/* 상세 영양 정보 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* 부족한 영양소 */}
+              <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4">
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  부족한 영양소
+                </h3>
+                {nutrientStats.filter((s) => s.percent < 80).length === 0 ? (
+                  <p className="text-xs text-zinc-500">
+                    모든 영양소가 충분합니다 👍
+                  </p>
+                ) : (
+                  <ul className="space-y-2 text-xs">
+                    {nutrientStats
+                      .filter((s) => s.percent < 80)
+                      .map((s) => (
+                        <li
+                          key={s.key}
+                          className="flex justify-between items-center"
+                        >
+                          <span>{s.label}</span>
+                          <span className="text-emerald-600 dark:text-emerald-400">
+                            {100 - s.percent}% 부족
+                          </span>
+                        </li>
+                      ))}
+                  </ul>
+                )}
+              </div>
+
+              {/* 과다 섭취 */}
+              <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4">
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-red-500" />
+                  과다 섭취
+                </h3>
+                {nutrientStats.filter((s) => s.percent > 120).length === 0 ? (
+                  <p className="text-xs text-zinc-500">
+                    과다 섭취된 영양소가 없습니다
+                  </p>
+                ) : (
+                  <ul className="space-y-2 text-xs">
+                    {nutrientStats
+                      .filter((s) => s.percent > 120)
+                      .map((s) => (
+                        <li
+                          key={s.key}
+                          className="flex justify-between items-center"
+                        >
+                          <span>{s.label}</span>
+                          <span className="text-red-600 dark:text-red-400">
+                            {s.percent - 100}% 초과
+                          </span>
+                        </li>
+                      ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+
+            {/* 권장 열량 비교 */}
+            <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 bg-zinc-50/60 dark:bg-zinc-900/40">
+              <h3 className="text-sm font-semibold mb-3">
                 일일 권장 열량과 비교
               </h3>
 
@@ -874,10 +1287,6 @@ export default function AnalysisPage() {
                           }}
                         />
                       </div>
-                      <p className="mt-1 text-[11px] text-zinc-500">
-                        80% 미만: 다소 적음 / 80~120%: 적정 / 120% 초과:
-                        과잉 섭취 가능성
-                      </p>
                     </div>
                   )}
                 </>
@@ -885,8 +1294,8 @@ export default function AnalysisPage() {
             </div>
 
             {/* 권장 알약 섭취 + 디스펜서 배출 */}
-            <div className="mt-4 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 bg-zinc-50/50 dark:bg-zinc-900/40 space-y-3">
-              <h3 className="text-sm font-semibold mb-1">
+            <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 bg-zinc-50/50 dark:bg-zinc-900/40 space-y-3">
+              <h3 className="text-sm font-semibold mb-3">
                 오늘 식사 기준 권장 알약 섭취
               </h3>
 
@@ -910,29 +1319,152 @@ export default function AnalysisPage() {
                 </p>
               ) : (
                 <>
-                  <div className="space-y-2">
-                    {pillRecommendations.map((rec) => (
-                      <div
-                        key={rec.bottleId}
-                        className="border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 text-xs"
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-semibold">
-                            Bottle {rec.bottleId} — {rec.pillName}
-                          </span>
-                          <span className="text-[11px] text-zinc-500">
-                            권장: {rec.count}정
-                          </span>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {pillRecommendations.map((rec) => {
+                      const remainingCount = getBottleCount(rec.bottleId);
+                      const isLow = remainingCount < 5;
+                      const isEmpty = remainingCount < rec.count;
+                      const canDispense = !isEmpty && !isExecuting && user;
+
+                      return (
+                        <div
+                          key={rec.bottleId}
+                          className={`rounded-lg p-4 flex flex-col transition-all ${
+                            isEmpty
+                              ? "border-2 border-red-300 dark:border-red-500/50 bg-red-50/50 dark:bg-red-950/20"
+                              : isLow
+                              ? "border-2 border-yellow-300 dark:border-yellow-500/50 bg-yellow-50/50 dark:bg-yellow-950/20"
+                              : "border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/30"
+                          }`}
+                        >
+                          {/* 상단: Bottle 번호 + 남은 개수 */}
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <div
+                                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                                  isEmpty
+                                    ? "bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400"
+                                    : isLow
+                                    ? "bg-yellow-100 dark:bg-yellow-900/50 text-yellow-600 dark:text-yellow-400"
+                                    : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                                }`}
+                              >
+                                {rec.bottleId}
+                              </div>
+                              <div>
+                                <span className="text-xs text-zinc-500 block">
+                                  Bottle {rec.bottleId}
+                                </span>
+                                <span
+                                  className={`text-xs font-medium ${
+                                    isEmpty
+                                      ? "text-red-500 dark:text-red-400"
+                                      : isLow
+                                      ? "text-yellow-600 dark:text-yellow-400"
+                                      : "text-zinc-600 dark:text-zinc-400"
+                                  }`}
+                                >
+                                  {isEmpty
+                                    ? "⚠ 재고 부족"
+                                    : isLow
+                                    ? "잔여 적음"
+                                    : "정상"}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div
+                                className={`text-lg font-semibold ${
+                                  isEmpty
+                                    ? "text-red-600 dark:text-red-400"
+                                    : isLow
+                                    ? "text-yellow-600 dark:text-yellow-400"
+                                    : "text-black dark:text-white"
+                                }`}
+                              >
+                                {remainingCount}
+                              </div>
+                              <div className="text-[10px] text-zinc-400">
+                                / 18 pills
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* 프로그레스 바 */}
+                          <div className="w-full h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden mb-3">
+                            <div
+                              className={`h-full rounded-full transition-all ${
+                                isEmpty
+                                  ? "bg-red-500"
+                                  : isLow
+                                  ? "bg-yellow-500"
+                                  : "bg-emerald-500"
+                              }`}
+                              style={{
+                                width: `${(remainingCount / 18) * 100}%`,
+                              }}
+                            />
+                          </div>
+
+                          {/* 약 이름 + 권장량 */}
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="font-medium text-sm">
+                              {rec.pillName}
+                            </p>
+                            <span className="px-2 py-0.5 bg-black dark:bg-white text-white dark:text-black text-xs rounded-full">
+                              {rec.count}정
+                            </span>
+                          </div>
+
+                          {/* 추천 이유 */}
+                          <p className="text-[11px] text-zinc-500 leading-relaxed mb-3 flex-1">
+                            {rec.reason}
+                          </p>
+
+                          {/* 배출 버튼 */}
+                          <button
+                            onClick={() =>
+                              handleSingleDispense(
+                                rec.bottleId,
+                                rec.count,
+                                rec.pillName
+                              )
+                            }
+                            disabled={!canDispense}
+                            className={`w-full px-3 py-2.5 rounded text-xs font-medium transition-colors mt-auto ${
+                              isEmpty
+                                ? "bg-red-100 dark:bg-red-900/30 text-red-500 dark:text-red-400 cursor-not-allowed"
+                                : canDispense
+                                ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black hover:bg-zinc-700 dark:hover:bg-zinc-300"
+                                : "bg-zinc-200 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed"
+                            }`}
+                          >
+                            {isExecuting
+                              ? "배출 중..."
+                              : isEmpty
+                              ? `재고 부족 (${remainingCount}개 남음)`
+                              : `${rec.count}정 배출하기`}
+                          </button>
                         </div>
-                        <p className="text-[11px] text-zinc-500">
-                          {rec.reason}
-                        </p>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
+                  {/* 개별 배출 메시지 */}
+                  {singleDispenseMessage && (
+                    <p
+                      className={`text-xs mt-3 text-center ${
+                        singleDispenseMessage.includes("실패")
+                          ? "text-red-500"
+                          : "text-emerald-500"
+                      }`}
+                    >
+                      {singleDispenseMessage}
+                    </p>
+                  )}
+
                   {/* 디스펜서 배출 버튼 */}
-                  <div className="mt-3 flex flex-col gap-2">
+                  <div className="mt-4 pt-4 border-t border-zinc-200 dark:border-zinc-800">
                     <button
                       onClick={handleDispense}
                       disabled={
@@ -940,38 +1472,44 @@ export default function AnalysisPage() {
                         pillRecommendations.length === 0 ||
                         !user
                       }
-                      className="w-full md:w-auto px-4 py-2 bg-black dark:bg-white text-white dark:text-black rounded text-xs font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors disabled:opacity-50"
+                      className="w-full px-4 py-3 bg-black dark:bg-white text-white dark:text-black rounded-lg text-sm font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors disabled:opacity-50"
                     >
                       {isDispensing
                         ? "디스펜서로 전송 중..."
-                        : "위 권장량대로 디스펜서에 배출 요청 보내기"}
+                        : "권장량대로 디스펜서에 배출 요청"}
                     </button>
                     {dispenseMessage && (
-                      <p className="text-[11px] text-emerald-500">
+                      <p className="text-xs text-emerald-500 mt-2 text-center">
                         {dispenseMessage}
                       </p>
                     )}
                     {dispenseError && (
-                      <p className="text-[11px] text-red-500">
+                      <p className="text-xs text-red-500 mt-2 text-center">
                         {dispenseError}
                       </p>
                     )}
-                    <p className="text-[11px] text-zinc-500">
-                      ESP32 쪽에서는 Firebase 경로{" "}
-                      <code className="px-1 py-0.5 rounded bg-zinc-900/60 text-[10px]">
-                        devices/&lt;uid&gt;/dispenseRequests/&lt;timestamp&gt;
-                      </code>{" "}
-                      를 구독해서, <code>items</code>에 있는{" "}
-                      <code>bottleId</code>, <code>count</code>대로 모터를
-                      돌리면 됩니다.
-                    </p>
                   </div>
                 </>
               )}
-              <p className="text-[11px] text-zinc-500 mt-1">
-                ※ 이 추천은 참고용이며, 실제 복용량·복용 여부는 반드시 의사/약사와
-                상의하는 것을 권장합니다.
+              <p className="text-[11px] text-zinc-500 mt-2">
+                ※ 이 추천은 참고용이며, 실제 복용량·복용 여부는 반드시
+                의사/약사와 상의하세요.
               </p>
+            </div>
+
+            {/* 분석에 사용된 음식 */}
+            <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4">
+              <h3 className="text-sm font-semibold mb-3">분석에 사용된 음식</h3>
+              <div className="flex flex-wrap gap-2">
+                {selectedFoods.map((item, idx) => (
+                  <span
+                    key={idx}
+                    className="px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-full text-xs"
+                  >
+                    {getFoodName(item.food)} · {item.grams}g
+                  </span>
+                ))}
+              </div>
             </div>
           </section>
         )}

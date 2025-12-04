@@ -1,16 +1,26 @@
 /**
+ * DHT 센서 데이터 (온습도)
+ */
+export interface DHTData {
+  temperature: number; // 섭씨 온도 (°C)
+  humidity: number; // 상대습도 (%)
+}
+
+/**
  * 센서 데이터 타입 정의
  * Hardware Spec: DHT11/BME280 + Photo Interrupter + IR Proximity
  */
 export interface SensorData {
-  temparature: number; // 섭씨 온도 (°C)
-  humidity: number; // 상대습도 (%)
   bottle1Count: number; // Bottle 1 남은 알약 개수
   bottle2Count: number; // Bottle 2 남은 알약 개수
   bottle3Count: number; // Bottle 3 남은 알약 개수
+  dht1: DHTData; // Bottle 1 온습도 센서
+  dht2: DHTData; // Bottle 2 온습도 센서
+  dht3: DHTData; // Bottle 3 온습도 센서
   lastDispensed: number; // 마지막 배출 시간 (Unix Timestamp)
   isDispensing: boolean; // 배출 중 여부 (Photo Interrupter 감지)
   fanStatus: boolean; // 쿨링팬 상태
+  photoDetected: boolean; // 포토 센서 감지 여부
   timestamp: number; // 데이터 갱신 시간
 }
 
@@ -19,11 +29,10 @@ export interface SensorData {
  */
 export interface ControlCommand {
   action: "dispense" | "reset" | "setThreshold";
-  payload?: {
-    count?: number; // 배출 개수 (기본값: 1)
-    tempThreshold?: number; // 온도 임계값 (기본값: 30°C)
-  };
+  bottleNumber: 1 | 2 | 3; // 배출할 병 번호 (dispense 시)
+  count: number; // 배출할 알약 개수 (dispense 시)
   requestedAt: number; // 요청 시각
+  status?: "pending" | "completed" | "failed"; // 명령 상태
 }
 
 /**

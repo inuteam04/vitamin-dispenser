@@ -101,3 +101,32 @@ select option {
   background-color: var(--background);
   color: var(--foreground);
 }
+
+/* Recharts 그래프 클릭 시 외곽선 제거 */
+.recharts-wrapper,
+.recharts-wrapper *,
+.recharts-surface,
+.recharts-layer,
+.recharts-bar,
+.recharts-bar-rectangle,
+.recharts-cartesian-axis,
+.recharts-cartesian-axis-tick,
+.recharts-cartesian-axis-tick-line,
+.recharts-cartesian-axis-tick-value,
+.recharts-cartesian-axis-tick-label,
+.recharts-xAxis,
+.recharts-yAxis {
+  outline: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  user-select: none !important;
+}
+
+.recharts-wrapper:focus,
+.recharts-wrapper *:focus,
+.recharts-surface:focus,
+.recharts-layer:focus,
+.recharts-bar-rectangle:focus,
+.recharts-cartesian-axis-tick-label:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}

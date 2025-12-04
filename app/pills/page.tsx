@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { db } from "@/lib/firebase";
 import { ref, get, set } from "firebase/database";
 import toast from "react-hot-toast";
+import { HamburgerMenu } from "@/components/HamburgerMenu";
+import { useRealtimeData } from "@/lib/hooks/useRealtimeData";
+import { useDeviceControl } from "@/lib/hooks/useDeviceControl";
+import { SensorData } from "@/lib/types";
 
 type PillConfig = {
   bottle1?: string;
@@ -34,6 +37,62 @@ export default function PillsPage() {
   });
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // 실시간 센서 데이터 (약 개수 확인용)
+  const { data: sensorData } = useRealtimeData<SensorData>("sensors", {
+    bottle1Count: 0,
+    bottle2Count: 0,
+    bottle3Count: 0,
+    dht1: { temperature: 0, humidity: 0 },
+    dht2: { temperature: 0, humidity: 0 },
+    dht3: { temperature: 0, humidity: 0 },
+    lastDispensed: 0,
+    isDispensing: false,
+    fanStatus: false,
+    photoDetected: false,
+    timestamp: 0,
+  });
+
+  // 리필 기능
+  const { refillBottle } = useDeviceControl();
+  const [refillingBottle, setRefillingBottle] = useState<1 | 2 | 3 | null>(
+    null
+  );
+
+  // 약통별 남은 개수 가져오기
+  const getBottleCount = (bottleId: 1 | 2 | 3): number => {
+    if (!sensorData) return 0;
+    switch (bottleId) {
+      case 1:
+        return sensorData.bottle1Count ?? 0;
+      case 2:
+        return sensorData.bottle2Count ?? 0;
+      case 3:
+        return sensorData.bottle3Count ?? 0;
+    }
+  };
+
+  // 리필 핸들러
+  const handleRefill = async (bottleId: 1 | 2 | 3) => {
+    const currentCount = getBottleCount(bottleId);
+    const refillAmount = 18 - currentCount; // 최대 18개까지 채움
+
+    if (refillAmount <= 0) {
+      toast.error("이미 가득 차 있습니다.");
+      return;
+    }
+
+    try {
+      setRefillingBottle(bottleId);
+      await refillBottle(bottleId, refillAmount);
+      toast.success(`Bottle ${bottleId}에 ${refillAmount}개를 리필했습니다.`);
+    } catch (err) {
+      console.error("Refill failed:", err);
+      toast.error("리필 중 오류가 발생했습니다.");
+    } finally {
+      setRefillingBottle(null);
+    }
+  };
 
   // 기존 설정 불러오기
   useEffect(() => {
@@ -109,12 +168,7 @@ export default function PillsPage() {
             </p>
           </div>
           <div className="flex items-center gap-4">
-            <Link
-              href="/dashboard"
-              className="text-sm text-zinc-500 hover:text-black dark:hover:text-white transition-colors"
-            >
-              ← Dashboard
-            </Link>
+            <HamburgerMenu />
             <ThemeToggle />
           </div>
         </div>
@@ -210,10 +264,142 @@ export default function PillsPage() {
           )}
         </section>
 
+        {/* 약통 재고 관리 섹션 */}
+        <section className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-6">
+          <h2 className="text-lg font-medium mb-2">약통 재고 관리</h2>
+          <p className="text-sm text-zinc-500 mb-6">
+            각 약통의 현재 재고를 확인하고, 약을 채웠을 때 리필 버튼을 눌러
+            재고를 업데이트하세요.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {([1, 2, 3] as const).map((bottleId) => {
+              const count = getBottleCount(bottleId);
+              const pillName =
+                config[`bottle${bottleId}` as keyof PillConfig] || "미설정";
+              const isLow = count < 5;
+              const isEmpty = count === 0;
+              const isFull = count >= 18;
+              const isRefilling = refillingBottle === bottleId;
+
+              return (
+                <div
+                  key={bottleId}
+                  className={`rounded-lg p-4 transition-all ${
+                    isEmpty
+                      ? "border-2 border-red-300 dark:border-red-500/50 bg-red-50/50 dark:bg-red-950/20"
+                      : isLow
+                      ? "border-2 border-yellow-300 dark:border-yellow-500/50 bg-yellow-50/50 dark:bg-yellow-950/20"
+                      : "border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/30"
+                  }`}
+                >
+                  {/* 상단: Bottle 번호 + 상태 */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-medium ${
+                          isEmpty
+                            ? "bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400"
+                            : isLow
+                            ? "bg-yellow-100 dark:bg-yellow-900/50 text-yellow-600 dark:text-yellow-400"
+                            : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                        }`}
+                      >
+                        {bottleId}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">Bottle {bottleId}</p>
+                        <p className="text-xs text-zinc-500">{pillName}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p
+                        className={`text-2xl font-light ${
+                          isEmpty
+                            ? "text-red-600 dark:text-red-400"
+                            : isLow
+                            ? "text-yellow-600 dark:text-yellow-400"
+                            : "text-black dark:text-white"
+                        }`}
+                      >
+                        {count}
+                      </p>
+                      <p className="text-xs text-zinc-400">/ 18 pills</p>
+                    </div>
+                  </div>
+
+                  {/* 프로그레스 바 */}
+                  <div className="w-full h-2 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden mb-3">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        isEmpty
+                          ? "bg-red-500"
+                          : isLow
+                          ? "bg-yellow-500"
+                          : "bg-emerald-500"
+                      }`}
+                      style={{ width: `${(count / 18) * 100}%` }}
+                    />
+                  </div>
+
+                  {/* 상태 메시지 */}
+                  <p
+                    className={`text-xs mb-3 ${
+                      isEmpty
+                        ? "text-red-500 dark:text-red-400 font-medium"
+                        : isLow
+                        ? "text-yellow-600 dark:text-yellow-400"
+                        : "text-zinc-500"
+                    }`}
+                  >
+                    {isEmpty
+                      ? "⚠ 재고 없음 - 리필이 필요합니다"
+                      : isLow
+                      ? "잔여량 적음 - 곧 리필이 필요합니다"
+                      : isFull
+                      ? "✓ 가득 참"
+                      : "정상"}
+                  </p>
+
+                  {/* 리필 버튼 */}
+                  <button
+                    onClick={() => handleRefill(bottleId)}
+                    disabled={isFull || isRefilling}
+                    className={`w-full px-3 py-2.5 rounded text-xs font-medium transition-colors ${
+                      isFull
+                        ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed"
+                        : isRefilling
+                        ? "bg-zinc-200 dark:bg-zinc-700 text-zinc-500 cursor-wait"
+                        : isEmpty
+                        ? "bg-red-500 hover:bg-red-600 text-white"
+                        : isLow
+                        ? "bg-yellow-500 hover:bg-yellow-600 text-white"
+                        : "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black hover:bg-zinc-700 dark:hover:bg-zinc-300"
+                    }`}
+                  >
+                    {isRefilling
+                      ? "리필 중..."
+                      : isFull
+                      ? "가득 참"
+                      : `리필하기 (+${18 - count}개)`}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          <p className="text-[11px] text-zinc-500 mt-4">
+            ※ 실제로 약통에 약을 채운 후 리필 버튼을 눌러주세요. 재고가 18개로
+            업데이트됩니다.
+          </p>
+        </section>
+
         <section className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-6">
           <h2 className="text-lg font-medium mb-2">설정 사용 방법</h2>
           <ul className="text-sm text-zinc-600 dark:text-zinc-300 list-disc pl-5 space-y-1">
-            <li>여기서 설정한 약 이름은 대시보드의 Bottle 카드에 표시됩니다.</li>
+            <li>
+              여기서 설정한 약 이름은 대시보드의 Bottle 카드에 표시됩니다.
+            </li>
             <li>
               나중에 하드웨어(ESP32)랑 연동하면, 각 Bottle에 맞는 분배
               기록/알림에도 활용할 수 있습니다.
