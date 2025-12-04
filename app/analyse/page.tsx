@@ -2,7 +2,8 @@
 
 import { useState, useMemo, useEffect, useRef, ChangeEvent } from "react";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { loadFoodDb, FoodRow, SelectedFood } from "@/lib/foodData";
+import { FoodRow, SelectedFood } from "@/lib/foodData";
+import { useFoodSearch } from "@/lib/hooks/useFoodSearch";
 import {
   loadDiseaseRules,
   DiseaseRule,
@@ -339,13 +340,21 @@ function AnalysisPage() {
 export default withAuth(AnalysisPage);
 
 function AnalysisContent() {
-  // 음식 DB
-  const [foodDb, setFoodDb] = useState<FoodRow[]>([]);
-  const [foodLoading, setFoodLoading] = useState(true);
+  // 음식 검색 (API 기반)
   const [query, setQuery] = useState("");
   const [selectedFoods, setSelectedFoods] = useState<SelectedFood[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // API 검색 훅 (점진적 캐싱 + 디바운스)
+  const {
+    foodRows: searchResults,
+    isLoading: foodLoading,
+    error: searchError,
+  } = useFoodSearch(query, {
+    debounceMs: 300,
+    minChars: 1,
+  });
 
   // 지병 데이터
   const [diseaseRules, setDiseaseRules] = useState<DiseaseRule[]>([]);
@@ -409,21 +418,6 @@ function AnalysisContent() {
         return sensorData.bottle3Count ?? 0;
     }
   };
-
-  // 음식 DB 로드
-  useEffect(() => {
-    const run = async () => {
-      try {
-        const rows = await loadFoodDb();
-        setFoodDb(rows);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setFoodLoading(false);
-      }
-    };
-    run();
-  }, []);
 
   // 드롭다운 외부 클릭 감지
   useEffect(() => {
@@ -542,17 +536,10 @@ function AnalysisContent() {
     return category.diseases.filter((d) => selectedDiseases.includes(d)).length;
   };
 
-  // 음식 검색 필터
+  // 검색 결과 (API 훅에서 가져옴, 최대 20개)
   const filteredFoods = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    return foodDb
-      .filter((row) => {
-        const name = getFoodName(row);
-        return name && name.toLowerCase().includes(q);
-      })
-      .slice(0, 20);
-  }, [query, foodDb]);
+    return searchResults.slice(0, 20);
+  }, [searchResults]);
 
   // 음식 추가
   const handleAddFood = (row: FoodRow) => {
@@ -793,12 +780,10 @@ function AnalysisContent() {
               placeholder="음식명 검색 (예: 김치찌개, 삼겹살)"
               className="w-full px-4 py-3 border border-zinc-300 dark:border-zinc-700 rounded bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
             />
-            {isDropdownOpen &&
-              query.trim() &&
-              !foodLoading &&
-              filteredFoods.length > 0 && (
-                <div className="absolute z-10 mt-1 w-full max-h-60 overflow-auto border border-zinc-300 dark:border-zinc-700 rounded bg-white dark:bg-black shadow-lg">
-                  {filteredFoods.map((row, idx) => (
+            {isDropdownOpen && query.trim() && !foodLoading && (
+              <div className="absolute z-10 mt-1 w-full max-h-60 overflow-auto border border-zinc-300 dark:border-zinc-700 rounded bg-white dark:bg-black shadow-lg">
+                {filteredFoods.length > 0 ? (
+                  filteredFoods.map((row, idx) => (
                     <button
                       key={idx}
                       onClick={() => handleAddFood(row)}
@@ -806,12 +791,20 @@ function AnalysisContent() {
                     >
                       {getFoodName(row)}
                     </button>
-                  ))}
-                </div>
-              )}
-            {foodLoading && (
-              <p className="text-xs text-zinc-500 mt-2">
-                음식 데이터 로딩 중...
+                  ))
+                ) : (
+                  <p className="px-4 py-3 text-sm text-zinc-500">
+                    &quot;{query}&quot;에 대한 검색 결과가 없습니다
+                  </p>
+                )}
+              </div>
+            )}
+            {foodLoading && query.trim() && (
+              <p className="text-xs text-zinc-500 mt-2">검색 중...</p>
+            )}
+            {searchError && (
+              <p className="text-xs text-red-500 mt-2">
+                검색 오류: {searchError}
               </p>
             )}
           </div>
