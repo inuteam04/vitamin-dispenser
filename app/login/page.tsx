@@ -41,9 +41,16 @@ function LoginContent() {
       // onAuthStateChanged에서 자동으로 리다이렉트됨
     } catch (error) {
       console.error("Login failed:", error);
-      toast.error("로그인에 실패했습니다. 다시 시도해주세요.", {
-        id: loadingToast,
-      });
+      if (error instanceof Error && error.message === "permission_denied") {
+        toast.error("접근 권한이 없습니다. 허용된 계정으로 로그인해주세요.", {
+          id: loadingToast,
+          duration: 6000,
+        });
+      } else {
+        toast.error("로그인에 실패했습니다. 다시 시도해주세요.", {
+          id: loadingToast,
+        });
+      }
     }
   };
 
