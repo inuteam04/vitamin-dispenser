@@ -17,6 +17,7 @@ const ALLOWED_EMAILS = [
   "yckimdaniel@inu.ac.kr",
   "beajun22@inu.ac.kr",
   "jina040602@inu.ac.kr",
+  "yckimdaniel@gmail.com",
 ];
 
 /**
