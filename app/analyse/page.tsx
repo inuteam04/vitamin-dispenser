@@ -12,7 +12,7 @@ import {
 
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { ref, get, set } from "firebase/database";
+import { ref, get } from "firebase/database";
 import { HamburgerMenu } from "@/components/HamburgerMenu";
 import { useDeviceControl } from "@/lib/hooks/useDeviceControl";
 import { useRealtimeData } from "@/lib/hooks/useRealtimeData";
@@ -26,6 +26,8 @@ import {
   Tooltip,
   Cell,
 } from "recharts";
+import { withAuth } from "@/components/withAuth";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // ===== 타입 정의 (프로필용) =====
 type Sex = "male" | "female" | "other" | "";
@@ -321,7 +323,22 @@ function computePillRecommendations(
   return recs;
 }
 
-export default function AnalysisPage() {
+/**
+ * 메인 대시보드 페이지
+ * 인증된 사용자만 접근 가능
+ */
+function AnalysisPage() {
+  return (
+    <ErrorBoundary>
+      <AnalysisContent />
+    </ErrorBoundary>
+  );
+}
+
+// 인증 보호 적용
+export default withAuth(AnalysisPage);
+
+function AnalysisContent() {
   // 음식 DB
   const [foodDb, setFoodDb] = useState<FoodRow[]>([]);
   const [foodLoading, setFoodLoading] = useState(true);
@@ -553,7 +570,11 @@ export default function AnalysisPage() {
   // 섭취량 변경
   const handleChangeGrams =
     (index: number) => (e: ChangeEvent<HTMLInputElement>) => {
-      const grams = Number(e.target.value) || 0;
+      // 숫자만 추출 후 앞의 0 제거
+      const rawValue =
+        e.target.value.replace(/\D/g, "").replace(/^0+/, "") || "0";
+      const grams = Number(rawValue);
+
       setSelectedFoods((prev) =>
         prev.map((item, i) => (i === index ? { ...item, grams } : item))
       );
@@ -659,7 +680,7 @@ export default function AnalysisPage() {
     [totalNutrition.calories, calorieNeeds, selectedDiseases, pillConfig]
   );
 
-  // 디스펜서 배출 요청
+  // 디스펜서 배출 요청 (권장량 기반 자동 배출)
   const handleDispense = async () => {
     setDispenseMessage(null);
     setDispenseError(null);
@@ -676,24 +697,21 @@ export default function AnalysisPage() {
     try {
       setIsDispensing(true);
 
-      const ts = Date.now();
-      const commandRef = ref(db, `devices/${user.uid}/dispenseRequests/${ts}`);
+      // pillRecommendations를 순회하면서 각각 dispense 호출
+      const results: string[] = [];
+      for (const rec of pillRecommendations) {
+        if (rec.count > 0) {
+          await dispense(rec.bottleId, rec.count);
+          results.push(`${rec.pillName} ${rec.count}정`);
+          await new Promise((res) => setTimeout(res, 1000));
+        }
+      }
 
-      await set(commandRef, {
-        createdAt: ts,
-        status: "pending",
-        totalCalories: totalNutrition.calories,
-        recommendedCalories:
-          calorieNeeds.recommended ?? calorieNeeds.fallback ?? 2000,
-        selectedDiseases,
-        items: pillRecommendations.map((r) => ({
-          bottleId: r.bottleId,
-          pillName: r.pillName,
-          count: r.count,
-        })),
-      });
-
-      setDispenseMessage("디스펜서에 알약 배출 요청을 전송했습니다.");
+      if (results.length > 0) {
+        setDispenseMessage(`배출 요청 완료: ${results.join(", ")}`);
+      } else {
+        setDispenseMessage("배출할 알약이 없습니다.");
+      }
     } catch (err) {
       console.error("Failed to send dispense request", err);
       setDispenseError("디스펜서 요청 중 오류가 발생했습니다.");
@@ -816,10 +834,21 @@ export default function AnalysisPage() {
                   </span>
                   <div className="flex items-center gap-2">
                     <input
-                      type="number"
-                      min={0}
-                      value={item.grams}
+                      type="text"
+                      inputMode="numeric" // 모바일에서 숫자 키패드 표시
+                      pattern="[0-9]*" // iOS 숫자 키패드
+                      value={item.grams} // 0일 때 빈칸으로 표시
                       onChange={handleChangeGrams(index)}
+                      onBlur={(e) => {
+                        // 포커스 잃을 때 빈칸이면 0으로
+                        if (e.target.value === "") {
+                          setSelectedFoods((prev) =>
+                            prev.map((food, i) =>
+                              i === index ? { ...food, grams: 0 } : food
+                            )
+                          );
+                        }
+                      }}
                       className="w-20 px-2 py-1 border border-zinc-300 dark:border-zinc-700 rounded text-sm bg-transparent text-center"
                     />
                     <span className="text-xs text-zinc-500">g</span>

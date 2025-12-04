@@ -10,6 +10,8 @@ import { HamburgerMenu } from "@/components/HamburgerMenu";
 import { useRealtimeData } from "@/lib/hooks/useRealtimeData";
 import { useDeviceControl } from "@/lib/hooks/useDeviceControl";
 import { SensorData } from "@/lib/types";
+import { withAuth } from "@/components/withAuth";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 type PillConfig = {
   bottle1?: string;
@@ -28,7 +30,22 @@ const PILL_OPTIONS: string[] = [
   "철분/빈혈",
 ];
 
-export default function PillsPage() {
+/**
+ * 메인 대시보드 페이지
+ * 인증된 사용자만 접근 가능
+ */
+function PillsPage() {
+  return (
+    <ErrorBoundary>
+      <PillsContent />
+    </ErrorBoundary>
+  );
+}
+
+// 인증 보호 적용
+export default withAuth(PillsPage);
+
+function PillsContent() {
   const { user, loading } = useAuth();
   const [config, setConfig] = useState<PillConfig>({
     bottle1: "",
