@@ -14,11 +14,13 @@ export function useDeviceControl() {
       setLastError(null);
 
       try {
-        // ★ 단일 노드에 덮어쓰기 (push 대신 set)
-        const controlRef = ref(database, "control/dispense");
+        // 약통별로 분리된 노드에 저장 (덮어쓰기 문제 방지)
+        const controlRef = ref(
+          database,
+          `control/dispense/bottle${bottleNumber}`
+        );
 
         await set(controlRef, {
-          bottleNumber: bottleNumber,
           count: count,
           status: "pending", // ESP32가 이걸 보고 처리
           requestedAt: Date.now(),

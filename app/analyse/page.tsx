@@ -703,7 +703,6 @@ function AnalysisContent() {
         if (rec.count > 0) {
           await dispense(rec.bottleId, rec.count);
           results.push(`${rec.pillName} ${rec.count}정`);
-          await new Promise((res) => setTimeout(res, 1000));
         }
       }
 
