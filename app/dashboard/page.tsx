@@ -21,7 +21,7 @@ import { withAuth } from "@/components/withAuth";
 import toast from "react-hot-toast";
 import { DiseaseRule, loadDiseaseRules } from "@/lib/diseaseRules";
 
-// 햄버거 메뉴 컴포넌트
+// 햄버거 메뉴 컴포넌트 (약 정보 메뉴 포함, 폰트 전부 text-sm 통일)
 function HamburgerMenu() {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -86,6 +86,13 @@ function HamburgerMenu() {
                 className="block px-4 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
               >
                 프로필 설정
+              </Link>
+              <Link
+                href="/pills"
+                onClick={() => setIsOpen(false)}
+                className="block px-4 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+              >
+                약 정보
               </Link>
             </nav>
           </div>
@@ -885,6 +892,28 @@ function DashboardContent() {
           </div>
         </section>
 
+        {/* ====== 약 정보 안내 섹션 (폰트 기존 섹션이랑 통일) ====== */}
+        <section className="mb-10 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6">
+          <h2 className="text-xl font-medium mb-2">약 정보</h2>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+            각 Bottle에 어떤 영양제가 들어있는지, 복용 목적과 주의사항을 한눈에
+            확인할 수 있습니다.
+          </p>
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm text-zinc-600 dark:text-zinc-300">
+              {"Bottle 1, 2, 3에 들어간 약 성분과 권장 복용량은 "}
+              <span className="font-semibold">[약 정보 페이지]</span>에서
+              관리합니다.
+            </p>
+            <Link
+              href="/pills"
+              className="px-4 py-2 rounded-lg bg-black text-white dark:bg-white dark:text-black text-sm font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors whitespace-nowrap"
+            >
+              약 정보 보러가기
+            </Link>
+          </div>
+        </section>
+
         {/* 데이터 갱신 시각 */}
         <footer className="text-center text-zinc-400 dark:text-zinc-600 text-xs font-mono uppercase tracking-wider">
           Last update:{" "}
@@ -894,3 +923,4 @@ function DashboardContent() {
     </div>
   );
 }
+  
