@@ -12,6 +12,7 @@ import { useDeviceControl } from "@/lib/hooks/useDeviceControl";
 import { SensorData } from "@/lib/types";
 import { withAuth } from "@/components/withAuth";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { Language, t } from "@/lib/i18n";
 
 type PillConfig = {
   bottle1?: string;
@@ -47,6 +48,7 @@ export default withAuth(PillsPage);
 
 function PillsContent() {
   const { user, loading } = useAuth();
+  const [lang, setLang] = useState<Language>("ko");
   const [config, setConfig] = useState<PillConfig>({
     bottle1: "",
     bottle2: "",
@@ -95,17 +97,17 @@ function PillsContent() {
     const refillAmount = 18 - currentCount; // 최대 18개까지 채움
 
     if (refillAmount <= 0) {
-      toast.error("이미 가득 차 있습니다.");
+      toast.error(t("toast.alreadyFull", lang));
       return;
     }
 
     try {
       setRefillingBottle(bottleId);
       await refillBottle(bottleId, refillAmount);
-      toast.success(`Bottle ${bottleId}에 ${refillAmount}개를 리필했습니다.`);
+      toast.success(t("toast.refillSuccess", lang));
     } catch (err) {
       console.error("Refill failed:", err);
-      toast.error("리필 중 오류가 발생했습니다.");
+      toast.error(t("toast.refillFailed", lang));
     } finally {
       setRefillingBottle(null);
     }
@@ -153,16 +155,16 @@ function PillsContent() {
 
   const handleSave = async () => {
     if (!user) {
-      toast.error("로그인 후에 약 정보를 저장할 수 있습니다.");
+      toast.error(t("page.pills.loginRequired", lang));
       return;
     }
     try {
       setSaving(true);
       await set(ref(db, `users/${user.uid}/pillConfig`), config);
-      toast.success("약 정보가 저장되었습니다.");
+      toast.success(t("page.pills.saveSuccess", lang));
     } catch (err) {
       console.error("Failed to save pill config", err);
-      toast.error("약 정보를 저장하는 중 오류가 발생했습니다.");
+      toast.error(t("page.pills.saveError", lang));
     } finally {
       setSaving(false);
     }
@@ -174,17 +176,23 @@ function PillsContent() {
       <header className="border-b border-zinc-200 dark:border-zinc-800">
         <div className="max-w-5xl mx-auto px-6 py-6 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-light tracking-tight">약 정보 설정</h1>
+            <h1 className="text-3xl font-light tracking-tight">
+              {t("page.pills.title", lang)}
+            </h1>
             <p className="text-zinc-500 text-sm mt-1">
-              각 약통(Bottle)에 어떤 종류의 영양제가 들어있는지 간단하게
-              설정하세요.
+              {t("page.pills.subtitle", lang)}
             </p>
             <p className="text-xs text-zinc-400 mt-1">
-              * 기능별로만 대략 설정해두고, 정확한 제품명·용량은 실제 병 라벨을
-              참고하세요.
+              {t("page.pills.hint", lang)}
             </p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setLang((l) => (l === "ko" ? "en" : "ko"))}
+              className="px-3 py-1.5 text-xs font-medium border border-zinc-300 dark:border-zinc-700 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            >
+              {lang === "ko" ? "EN" : "한국어"}
+            </button>
             <HamburgerMenu />
             <ThemeToggle />
           </div>
@@ -194,10 +202,14 @@ function PillsContent() {
       {/* 메인 */}
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-8">
         <section className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-6">
-          <h2 className="text-lg font-medium mb-4">Bottle 별 약 종류 선택</h2>
+          <h2 className="text-lg font-medium mb-4">
+            {t("page.pills.sectionTitle", lang)}
+          </h2>
 
           {loading || loadingConfig ? (
-            <p className="text-sm text-zinc-500">설정을 불러오는 중...</p>
+            <p className="text-sm text-zinc-500">
+              {t("page.pills.loading", lang)}
+            </p>
           ) : (
             <div className="space-y-6">
               {/* Bottle 1 */}
@@ -205,7 +217,9 @@ function PillsContent() {
                 <div>
                   <p className="text-sm font-semibold">Bottle 1</p>
                   <p className="text-xs text-zinc-500 mt-1">
-                    아침에 자주 먹는 메인 영양제 등으로 설정해두면 좋습니다.
+                    {lang === "ko"
+                      ? "아침에 자주 먹는 메인 영양제 등으로 설정해두면 좋습니다."
+                      : "Best for main supplements you take in the morning."}
                   </p>
                 </div>
                 <select
@@ -213,7 +227,7 @@ function PillsContent() {
                   onChange={handleChange("bottle1")}
                   className="w-full md:w-64 px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
                 >
-                  <option value="">선택 안 함</option>
+                  <option value="">{t("page.pills.selectNone", lang)}</option>
                   {PILL_OPTIONS.filter((v) => v !== "").map((opt) => (
                     <option key={opt} value={opt}>
                       {opt}
@@ -227,8 +241,9 @@ function PillsContent() {
                 <div>
                   <p className="text-sm font-semibold">Bottle 2</p>
                   <p className="text-xs text-zinc-500 mt-1">
-                    보조 영양제(오메가3, 유산균 등)를 넣어두는 용도로 사용할 수
-                    있습니다.
+                    {lang === "ko"
+                      ? "보조 영양제(오메가3, 유산균 등)를 넣어두는 용도로 사용할 수 있습니다."
+                      : "Good for secondary supplements like Omega-3 or probiotics."}
                   </p>
                 </div>
                 <select
@@ -236,7 +251,7 @@ function PillsContent() {
                   onChange={handleChange("bottle2")}
                   className="w-full md:w-64 px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
                 >
-                  <option value="">선택 안 함</option>
+                  <option value="">{t("page.pills.selectNone", lang)}</option>
                   {PILL_OPTIONS.filter((v) => v !== "").map((opt) => (
                     <option key={opt} value={opt}>
                       {opt}
@@ -250,8 +265,9 @@ function PillsContent() {
                 <div>
                   <p className="text-sm font-semibold">Bottle 3</p>
                   <p className="text-xs text-zinc-500 mt-1">
-                    추가로 관리하고 싶은 약(눈 건강, 철분 등)을 넣어둘 수
-                    있습니다.
+                    {lang === "ko"
+                      ? "추가로 관리하고 싶은 약(눈 건강, 철분 등)을 넣어둘 수 있습니다."
+                      : "For additional supplements like eye health or iron."}
                   </p>
                 </div>
                 <select
@@ -259,7 +275,7 @@ function PillsContent() {
                   onChange={handleChange("bottle3")}
                   className="w-full md:w-64 px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
                 >
-                  <option value="">선택 안 함</option>
+                  <option value="">{t("page.pills.selectNone", lang)}</option>
                   {PILL_OPTIONS.filter((v) => v !== "").map((opt) => (
                     <option key={opt} value={opt}>
                       {opt}
@@ -274,7 +290,9 @@ function PillsContent() {
                   disabled={saving}
                   className="px-6 py-2 bg-black dark:bg-white text-white dark:text-black rounded text-sm font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors disabled:opacity-60"
                 >
-                  {saving ? "저장 중..." : "저장하기"}
+                  {saving
+                    ? t("page.pills.saving", lang)
+                    : t("page.pills.save", lang)}
                 </button>
               </div>
             </div>
@@ -283,17 +301,21 @@ function PillsContent() {
 
         {/* 약통 재고 관리 섹션 */}
         <section className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-6">
-          <h2 className="text-lg font-medium mb-2">약통 재고 관리</h2>
+          <h2 className="text-lg font-medium mb-2">
+            {lang === "ko" ? "약통 재고 관리" : "Bottle Inventory Management"}
+          </h2>
           <p className="text-sm text-zinc-500 mb-6">
-            각 약통의 현재 재고를 확인하고, 약을 채웠을 때 리필 버튼을 눌러
-            재고를 업데이트하세요.
+            {lang === "ko"
+              ? "각 약통의 현재 재고를 확인하고, 약을 채웠을 때 리필 버튼을 눌러 재고를 업데이트하세요."
+              : "Check current inventory and press refill when you've added pills."}
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {([1, 2, 3] as const).map((bottleId) => {
               const count = getBottleCount(bottleId);
               const pillName =
-                config[`bottle${bottleId}` as keyof PillConfig] || "미설정";
+                config[`bottle${bottleId}` as keyof PillConfig] ||
+                (lang === "ko" ? "미설정" : "Not Set");
               const isLow = count < 5;
               const isEmpty = count === 0;
               const isFull = count >= 18;
@@ -370,12 +392,20 @@ function PillsContent() {
                     }`}
                   >
                     {isEmpty
-                      ? "⚠ 재고 없음 - 리필이 필요합니다"
+                      ? lang === "ko"
+                        ? "⚠ 재고 없음 - 리필이 필요합니다"
+                        : "⚠ Empty - Refill needed"
                       : isLow
-                      ? "잔여량 적음 - 곧 리필이 필요합니다"
+                      ? lang === "ko"
+                        ? "잔여량 적음 - 곧 리필이 필요합니다"
+                        : "Low stock - Refill soon"
                       : isFull
-                      ? "✓ 가득 참"
-                      : "정상"}
+                      ? lang === "ko"
+                        ? "✓ 가득 참"
+                        : "✓ Full"
+                      : lang === "ko"
+                      ? "정상"
+                      : "Normal"}
                   </p>
 
                   {/* 리필 버튼 */}
@@ -395,10 +425,16 @@ function PillsContent() {
                     }`}
                   >
                     {isRefilling
-                      ? "리필 중..."
+                      ? lang === "ko"
+                        ? "리필 중..."
+                        : "Refilling..."
                       : isFull
-                      ? "가득 참"
-                      : `리필하기 (+${18 - count}개)`}
+                      ? lang === "ko"
+                        ? "가득 참"
+                        : "Full"
+                      : `${lang === "ko" ? "리필하기" : "Refill"} (+${
+                          18 - count
+                        }${lang === "ko" ? "개" : ""})`}
                   </button>
                 </div>
               );
@@ -406,22 +442,32 @@ function PillsContent() {
           </div>
 
           <p className="text-[11px] text-zinc-500 mt-4">
-            ※ 실제로 약통에 약을 채운 후 리필 버튼을 눌러주세요. 재고가 18개로
-            업데이트됩니다.
+            {lang === "ko"
+              ? "※ 실제로 약통에 약을 채운 후 리필 버튼을 눌러주세요. 재고가 18개로 업데이트됩니다."
+              : "※ Press refill after physically adding pills. Inventory updates to 18."}
           </p>
         </section>
 
         <section className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-6">
-          <h2 className="text-lg font-medium mb-2">설정 사용 방법</h2>
+          <h2 className="text-lg font-medium mb-2">
+            {lang === "ko" ? "설정 사용 방법" : "How to Use"}
+          </h2>
           <ul className="text-sm text-zinc-600 dark:text-zinc-300 list-disc pl-5 space-y-1">
             <li>
-              여기서 설정한 약 이름은 대시보드의 Bottle 카드에 표시됩니다.
+              {lang === "ko"
+                ? "여기서 설정한 약 이름은 대시보드의 Bottle 카드에 표시됩니다."
+                : "Pill names set here are displayed on dashboard Bottle cards."}
             </li>
             <li>
-              나중에 하드웨어(ESP32)랑 연동하면, 각 Bottle에 맞는 분배
-              기록/알림에도 활용할 수 있습니다.
+              {lang === "ko"
+                ? "나중에 하드웨어(ESP32)랑 연동하면, 각 Bottle에 맞는 분배 기록/알림에도 활용할 수 있습니다."
+                : "When integrated with hardware (ESP32), can be used for dispense records and alerts."}
             </li>
-            <li>정확한 복용량, 상호작용 등은 반드시 의사/약사와 상의하세요.</li>
+            <li>
+              {lang === "ko"
+                ? "정확한 복용량, 상호작용 등은 반드시 의사/약사와 상의하세요."
+                : "Always consult a doctor/pharmacist for exact dosages and interactions."}
+            </li>
           </ul>
         </section>
       </main>

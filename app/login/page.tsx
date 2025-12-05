@@ -1,11 +1,12 @@
 "use client";
 
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import toast from "react-hot-toast";
+import { Language, t } from "@/lib/i18n";
 
 /**
  * 로그인 페이지 내용 컴포넌트
@@ -15,6 +16,7 @@ function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
+  const [lang, setLang] = useState<Language>("ko");
 
   // 이미 로그인된 경우 대시보드로 리다이렉트
   useEffect(() => {
@@ -26,28 +28,28 @@ function LoginContent() {
   // permission_denied 에러 메시지 표시
   useEffect(() => {
     if (error === "permission_denied") {
-      toast.error("접근 권한이 없습니다. 허용된 계정으로 로그인해주세요.", {
+      toast.error(t("page.login.permissionDeniedHint", lang), {
         duration: 6000,
       });
     }
-  }, [error]);
+  }, [error, lang]);
 
   // 로그인 처리
   const handleLogin = async () => {
-    const loadingToast = toast.loading("로그인 중...");
+    const loadingToast = toast.loading(t("page.login.loading", lang));
     try {
       await loginWithGoogle();
-      toast.success("로그인 성공!", { id: loadingToast });
+      toast.success(t("page.login.success", lang), { id: loadingToast });
       // onAuthStateChanged에서 자동으로 리다이렉트됨
     } catch (error) {
       console.error("Login failed:", error);
       if (error instanceof Error && error.message === "permission_denied") {
-        toast.error("접근 권한이 없습니다. 허용된 계정으로 로그인해주세요.", {
+        toast.error(t("page.login.permissionDeniedHint", lang), {
           id: loadingToast,
           duration: 6000,
         });
       } else {
-        toast.error("로그인에 실패했습니다. 다시 시도해주세요.", {
+        toast.error(t("page.login.failed", lang), {
           id: loadingToast,
         });
       }
@@ -70,8 +72,14 @@ function LoginContent() {
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-white dark:bg-black px-4">
-      {/* 테마 토글 버튼 (우측 상단) */}
-      <div className="fixed top-8 right-8">
+      {/* 테마 토글 + 언어 토글 버튼 (우측 상단) */}
+      <div className="fixed top-8 right-8 flex items-center gap-3">
+        <button
+          onClick={() => setLang((l) => (l === "ko" ? "en" : "ko"))}
+          className="px-3 py-1.5 text-xs font-medium border border-zinc-300 dark:border-zinc-700 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+        >
+          {lang === "ko" ? "EN" : "한국어"}
+        </button>
         <ThemeToggle />
       </div>
 
@@ -79,10 +87,10 @@ function LoginContent() {
         {/* 로고/제목 */}
         <div className="text-center mb-12">
           <h1 className="text-5xl font-light tracking-tight mb-3 text-black dark:text-white">
-            Vitamin Dispenser
+            {t("page.login.title", lang)}
           </h1>
           <p className="text-zinc-600 dark:text-zinc-400 text-sm uppercase tracking-wider">
-            Authentication Required
+            {t("page.login.subtitle", lang)}
           </p>
         </div>
 
@@ -90,9 +98,11 @@ function LoginContent() {
         {error === "permission_denied" && (
           <div className="mb-6 p-4 border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950 rounded">
             <p className="text-red-800 dark:text-red-200 text-sm text-center">
-              <span className="font-medium">접근 권한이 없습니다.</span>
+              <span className="font-medium">
+                {t("page.login.permissionDenied", lang)}
+              </span>
               <br />
-              허용된 계정으로 로그인해주세요.
+              {t("page.login.permissionDeniedHint", lang)}
             </p>
           </div>
         )}
@@ -104,7 +114,9 @@ function LoginContent() {
           </h2>
 
           <p className="text-zinc-600 dark:text-zinc-400 text-sm text-center mb-8">
-            대시보드에 액세스하려면 Google 계정으로 로그인하세요.
+            {lang === "ko"
+              ? "대시보드에 액세스하려면 Google 계정으로 로그인하세요."
+              : "Sign in with your Google account to access the dashboard."}
           </p>
 
           {/* Google 로그인 버튼 */}
@@ -118,12 +130,14 @@ function LoginContent() {
               <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
               <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
             </svg>
-            Sign in with Google
+            {t("page.login.googleLogin", lang)}
           </button>
 
           {/* 추가 정보 */}
           <p className="text-zinc-400 dark:text-zinc-600 text-xs text-center mt-6">
-            로그인하면 실시간 모니터링 및 제어 기능에 액세스할 수 있습니다.
+            {lang === "ko"
+              ? "로그인하면 실시간 모니터링 및 제어 기능에 액세스할 수 있습니다."
+              : "After signing in, you can access real-time monitoring and control features."}
           </p>
         </div>
 
@@ -132,7 +146,7 @@ function LoginContent() {
           href="/"
           className="mt-5 justify-center flex text-zinc-500 dark:text-zinc-500 hover:text-black dark:hover:text-white text-sm uppercase tracking-wider transition-colors"
         >
-          ← Back to Home
+          ← {t("page.login.backToHome", lang)}
         </Link>
       </div>
     </div>

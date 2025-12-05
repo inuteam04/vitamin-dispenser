@@ -28,6 +28,7 @@ import {
 } from "recharts";
 import { withAuth } from "@/components/withAuth";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { Language, t } from "@/lib/i18n";
 
 // ===== 타입 정의 (프로필용) =====
 type Sex = "male" | "female" | "other" | "";
@@ -339,6 +340,9 @@ function AnalysisPage() {
 export default withAuth(AnalysisPage);
 
 function AnalysisContent() {
+  // 다국어
+  const [lang, setLang] = useState<Language>("ko");
+
   // 음식 DB
   const [foodDb, setFoodDb] = useState<FoodRow[]>([]);
   const [foodLoading, setFoodLoading] = useState(true);
@@ -751,24 +755,30 @@ function AnalysisContent() {
       <header className="border-b border-zinc-200 dark:border-zinc-800">
         <div className="max-w-5xl mx-auto px-6 py-6 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-light tracking-tight">영양 분석</h1>
+            <h1 className="text-3xl font-light tracking-tight">
+              {t("page.analyse.title", lang)}
+            </h1>
             <p className="text-zinc-500 text-sm mt-1">
-              오늘 먹은 음식을 입력하고 영양 상태를 분석하세요
+              {t("page.analyse.subtitle", lang)}
             </p>
             {user && !profileLoading && (
               <p className="text-xs text-zinc-400 mt-1">
-                프로필에 저장된 키·몸무게·활동량을 사용해 권장 열량과
-                비교합니다.
+                {t("page.analyse.profileHint", lang)}
               </p>
             )}
             {!user && (
               <p className="text-xs text-zinc-400 mt-1">
-                로그인 후 프로필에 키·몸무게를 입력하면 더 정확한 분석이
-                가능합니다.
+                {t("page.analyse.loginHint", lang)}
               </p>
             )}
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setLang((l) => (l === "ko" ? "en" : "ko"))}
+              className="px-3 py-1.5 text-xs font-medium border border-zinc-300 dark:border-zinc-700 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            >
+              {lang === "ko" ? "EN" : "한국어"}
+            </button>
             <HamburgerMenu />
             <ThemeToggle />
           </div>
@@ -778,7 +788,9 @@ function AnalysisContent() {
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-8">
         {/* 음식 검색 섹션 */}
         <section className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-6">
-          <h2 className="text-lg font-medium mb-4">오늘 먹은 음식</h2>
+          <h2 className="text-lg font-medium mb-4">
+            {t("page.analyse.foodSection", lang)}
+          </h2>
 
           {/* 검색창 */}
           <div className="relative mb-4" ref={dropdownRef}>
@@ -790,7 +802,7 @@ function AnalysisContent() {
                 setIsDropdownOpen(true);
               }}
               onFocus={() => setIsDropdownOpen(true)}
-              placeholder="음식명 검색 (예: 김치찌개, 삼겹살)"
+              placeholder={t("page.analyse.searchPlaceholder", lang)}
               className="w-full px-4 py-3 border border-zinc-300 dark:border-zinc-700 rounded bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400"
             />
             {isDropdownOpen &&
@@ -1015,7 +1027,8 @@ function AnalysisContent() {
                 ))}
                 {selectedDiseases.length > 5 && (
                   <span className="px-2 py-1 text-xs text-zinc-500">
-                    +{selectedDiseases.length - 5}개 더
+                    +{selectedDiseases.length - 5}
+                    {lang === "ko" ? "개 더" : " more"}
                   </span>
                 )}
               </div>
@@ -1030,19 +1043,25 @@ function AnalysisContent() {
             disabled={selectedFoods.length === 0 || isAnalyzing}
             className="px-8 py-3 bg-black dark:bg-white text-white dark:text-black rounded font-medium text-sm uppercase tracking-wider hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors disabled:opacity-50"
           >
-            {isAnalyzing ? "분석 중..." : "영양 분석 시작"}
+            {isAnalyzing
+              ? t("page.analyse.analyzing", lang)
+              : t("page.analyse.startAnalysis", lang)}
           </button>
         </div>
 
         {/* 분석 결과 */}
         {hasAnalyzed && !isAnalyzing && (
           <section className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-6 space-y-6">
-            <h2 className="text-lg font-medium">분석 결과</h2>
+            <h2 className="text-lg font-medium">
+              {lang === "ko" ? "분석 결과" : "Analysis Results"}
+            </h2>
 
             {/* 상단 요약 카드 */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 text-center">
-                <p className="text-xs text-zinc-500 mb-1">총 섭취량</p>
+                <p className="text-xs text-zinc-500 mb-1">
+                  {lang === "ko" ? "총 섭취량" : "Total Intake"}
+                </p>
                 <p className="text-2xl font-light">{totalGrams}</p>
                 <p className="text-xs text-zinc-400">g</p>
               </div>

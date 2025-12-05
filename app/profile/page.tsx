@@ -17,6 +17,7 @@ import {
   DiseaseCategory,
 } from "@/lib/diseaseRules";
 import { HamburgerMenu } from "@/components/HamburgerMenu";
+import { Language, t } from "@/lib/i18n";
 
 // ===== 타입 정의 =====
 type Sex = "male" | "female" | "other" | "";
@@ -47,6 +48,7 @@ function parseNumberOrNull(value: string): number | null {
 export default function ProfilePage() {
   const [user, setUser] = useState<User | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [lang, setLang] = useState<Language>("ko");
 
   const [profile, setProfile] = useState<UserProfile>({
     name: "",
@@ -163,7 +165,7 @@ export default function ProfilePage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!user) {
-      toast.error("로그인 후 이용 가능합니다.");
+      toast.error(t("page.profile.loginRequired", lang));
       return;
     }
 
@@ -171,10 +173,10 @@ export default function ProfilePage() {
 
     try {
       await set(ref(db, `users/${user.uid}/profile`), profile);
-      toast.success("프로필 저장 완료");
+      toast.success(t("page.profile.saveSuccess", lang));
     } catch (err) {
       console.error(err);
-      toast.error("프로필 저장 실패");
+      toast.error(t("page.profile.saveError", lang));
     } finally {
       setSaving(false);
     }
@@ -183,7 +185,7 @@ export default function ProfilePage() {
   if (initialLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-zinc-500">
-        로딩 중...
+        {t("page.profile.loading", lang)}
       </div>
     );
   }
@@ -191,9 +193,9 @@ export default function ProfilePage() {
   if (!user) {
     return (
       <div className="min-h-screen bg-white dark:bg-black text-center text-zinc-500 p-20">
-        <p className="mb-4">로그인 후 이용 가능합니다.</p>
+        <p className="mb-4">{t("page.profile.loginRequired", lang)}</p>
         <Link href="/login" className="text-blue-500 underline">
-          로그인 이동
+          {t("page.profile.goToLogin", lang)}
         </Link>
       </div>
     );
@@ -204,8 +206,16 @@ export default function ProfilePage() {
       {/* 헤더 */}
       <header className="border-b border-zinc-200 dark:border-zinc-800">
         <div className="max-w-3xl mx-auto px-6 py-6 flex items-center justify-between">
-          <h1 className="text-3xl font-light">프로필 설정</h1>
-          <div className="flex items-center gap-4">
+          <h1 className="text-3xl font-light">
+            {t("page.profile.title", lang)}
+          </h1>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setLang((l) => (l === "ko" ? "en" : "ko"))}
+              className="px-3 py-1.5 text-xs font-medium border border-zinc-300 dark:border-zinc-700 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            >
+              {lang === "ko" ? "EN" : "한국어"}
+            </button>
             <HamburgerMenu />
             <ThemeToggle />
           </div>
@@ -219,11 +229,15 @@ export default function ProfilePage() {
         >
           {/* 기본 정보 */}
           <section className="space-y-3">
-            <h2 className="text-lg font-medium">기본 정보</h2>
+            <h2 className="text-lg font-medium">
+              {t("page.profile.basicInfo", lang)}
+            </h2>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-xs text-zinc-500">이름</label>
+                <label className="text-xs text-zinc-500">
+                  {t("page.profile.name", lang)}
+                </label>
                 <input
                   type="text"
                   value={profile.name ?? ""}
@@ -233,7 +247,9 @@ export default function ProfilePage() {
               </div>
 
               <div>
-                <label className="text-xs text-zinc-500">나이</label>
+                <label className="text-xs text-zinc-500">
+                  {t("page.profile.age", lang)}
+                </label>
                 <input
                   type="number"
                   min={0}
@@ -246,7 +262,9 @@ export default function ProfilePage() {
 
             {/* 성별 */}
             <div className="space-y-1">
-              <label className="text-xs text-zinc-500">성별</label>
+              <label className="text-xs text-zinc-500">
+                {t("page.profile.sex", lang)}
+              </label>
               <div className="flex gap-4 text-sm">
                 {["male", "female", "other"].map((sx) => (
                   <label key={sx} className="flex items-center gap-2">
@@ -259,10 +277,10 @@ export default function ProfilePage() {
                     />
                     <span>
                       {sx === "male"
-                        ? "남성"
+                        ? t("page.profile.male", lang)
                         : sx === "female"
-                        ? "여성"
-                        : "기타"}
+                        ? t("page.profile.female", lang)
+                        : t("page.profile.other", lang)}
                     </span>
                   </label>
                 ))}
@@ -272,11 +290,15 @@ export default function ProfilePage() {
 
           {/* 신체 */}
           <section className="space-y-3">
-            <h2 className="text-lg font-medium">신체 정보</h2>
+            <h2 className="text-lg font-medium">
+              {lang === "ko" ? "신체 정보" : "Body Information"}
+            </h2>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-xs text-zinc-500">키(cm)</label>
+                <label className="text-xs text-zinc-500">
+                  {t("page.profile.height", lang)}
+                </label>
                 <input
                   type="number"
                   value={profile.heightCm ?? ""}
@@ -286,7 +308,9 @@ export default function ProfilePage() {
               </div>
 
               <div>
-                <label className="text-xs text-zinc-500">몸무게(kg)</label>
+                <label className="text-xs text-zinc-500">
+                  {t("page.profile.weight", lang)}
+                </label>
                 <input
                   type="number"
                   value={profile.weightKg ?? ""}
@@ -299,30 +323,52 @@ export default function ProfilePage() {
 
           {/* 활동량 */}
           <section className="space-y-3">
-            <h2 className="text-lg font-medium">활동량</h2>
+            <h2 className="text-lg font-medium">
+              {t("page.profile.activityLevel", lang)}
+            </h2>
 
             <select
               value={profile.activityLevel ?? ""}
               onChange={handleChange("activityLevel")}
               className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded bg-transparent text-sm"
             >
-              <option value="">선택</option>
-              <option value="sedentary">거의 운동 안함</option>
-              <option value="light">가벼운 활동</option>
-              <option value="moderate">보통 수준</option>
-              <option value="active">활동적</option>
-              <option value="very_active">매우 활동적</option>
+              <option value="">{lang === "ko" ? "선택" : "Select"}</option>
+              <option value="sedentary">
+                {lang === "ko" ? "거의 운동 안함" : "Sedentary"}
+              </option>
+              <option value="light">
+                {lang === "ko" ? "가벼운 활동" : "Lightly Active"}
+              </option>
+              <option value="moderate">
+                {lang === "ko" ? "보통 수준" : "Moderately Active"}
+              </option>
+              <option value="active">
+                {lang === "ko" ? "활동적" : "Active"}
+              </option>
+              <option value="very_active">
+                {lang === "ko" ? "매우 활동적" : "Very Active"}
+              </option>
             </select>
           </section>
 
           {/* 지병 - CSV 기반 전체 */}
           <section className="space-y-3">
-            <h2 className="text-lg font-medium">지병 / 질환 (전체 목록)</h2>
+            <h2 className="text-lg font-medium">
+              {t("page.profile.diseases", lang)}
+            </h2>
 
             {diseaseLoading ? (
-              <p className="text-sm text-zinc-500">지병 데이터 로딩중...</p>
+              <p className="text-sm text-zinc-500">
+                {lang === "ko"
+                  ? "지병 데이터 로딩중..."
+                  : "Loading health data..."}
+              </p>
             ) : diseaseCategories.length === 0 ? (
-              <p className="text-sm text-zinc-500">지병 데이터 없음</p>
+              <p className="text-sm text-zinc-500">
+                {lang === "ko"
+                  ? "지병 데이터 없음"
+                  : "No health data available"}
+              </p>
             ) : (
               <div className="space-y-3">
                 {diseaseCategories.map((category) => {
@@ -385,7 +431,9 @@ export default function ProfilePage() {
               disabled={saving}
               className="px-6 py-2 rounded bg-black dark:bg-white text-white dark:text-black text-sm"
             >
-              {saving ? "저장 중..." : "프로필 저장"}
+              {saving
+                ? t("page.profile.saving", lang)
+                : t("page.profile.save", lang)}
             </button>
           </div>
         </form>
