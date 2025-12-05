@@ -63,6 +63,7 @@ type PillRecommendation = {
   pillName: string;
   count: number;
   reason: string;
+  isRecommended: boolean; // 실제 복용 권장 여부
 };
 
 // 음식 이름 추출 헬퍼
@@ -269,10 +270,11 @@ function computePillRecommendations(
     bottleId: 1 | 2 | 3,
     pillName: string,
     count: number,
-    reason: string
+    reason: string,
+    isRecommended: boolean = true
   ) => {
     if (!pillName) return;
-    recs.push({ bottleId, pillName, count, reason });
+    recs.push({ bottleId, pillName, count, reason, isRecommended });
   };
 
   const bottleNames: { id: 1 | 2 | 3; name?: string }[] = [
@@ -286,10 +288,18 @@ function computePillRecommendations(
 
     const count = 1;
     let reason = "일반적인 1일 권장량 기준 1정을 권장합니다.";
+    let isRecommended = true;
+
+    // 테스트용: 약통 1은 영양소가 충분해서 권장하지 않음
+    if (id === 1) {
+      reason = "현재 섭취한 음식에서 해당 영양소가 충분히 공급되어 추가 복용이 필요하지 않습니다.";
+      isRecommended = false;
+    }
 
     if (
       ratio < 0.8 &&
-      (name.includes("종합비타민") || name.includes("비타민"))
+      (name.includes("종합비타민") || name.includes("비타민")) &&
+      id !== 1 // 약통 1은 제외
     ) {
       reason =
         "오늘 전체 섭취 열량이 권장량보다 적어, 부족한 영양 보충을 위해 1정을 권장합니다.";
@@ -313,12 +323,12 @@ function computePillRecommendations(
         "빈혈 관련 질환이 선택되어 있어, 철분 1정을 보조용으로 권장합니다.";
     }
 
-    if (ratio > 1.2) {
+    if (ratio > 1.2 && isRecommended) {
       reason +=
         " (※ 오늘 섭취 열량이 권장량보다 높은 편이라, 추가 영양제 섭취는 과하지 않도록 주의하세요.)";
     }
 
-    addRec(id, name, count, reason);
+    addRec(id, name, count, reason, isRecommended);
   });
 
   return recs;
@@ -698,12 +708,20 @@ function AnalysisContent() {
       return;
     }
 
+    // isRecommended가 true인 약만 필터링
+    const recommendedPills = pillRecommendations.filter(rec => rec.isRecommended);
+    
+    if (recommendedPills.length === 0) {
+      setDispenseMessage("모든 영양소가 충분하여 배출할 알약이 없습니다.");
+      return;
+    }
+
     try {
       setIsDispensing(true);
 
-      // pillRecommendations를 순회하면서 각각 dispense 호출
+      // recommendedPills만 순회하면서 각각 dispense 호출
       const results: string[] = [];
-      for (const rec of pillRecommendations) {
+      for (const rec of recommendedPills) {
         if (rec.count > 0) {
           await dispense(rec.bottleId, rec.count);
           results.push(`${rec.pillName} ${rec.count}정`);
@@ -1371,13 +1389,16 @@ function AnalysisContent() {
                       const remainingCount = getBottleCount(rec.bottleId);
                       const isLow = remainingCount < 5;
                       const isEmpty = remainingCount < rec.count;
-                      const canDispense = !isEmpty && !isExecuting && user;
+                      const notRecommended = !rec.isRecommended;
+                      const canDispense = !isEmpty && !isExecuting && user && rec.isRecommended;
 
                       return (
                         <div
                           key={rec.bottleId}
                           className={`rounded-lg p-4 flex flex-col transition-all ${
-                            isEmpty
+                            notRecommended
+                              ? "border-2 border-emerald-300 dark:border-emerald-500/50 bg-emerald-50/50 dark:bg-emerald-950/20 opacity-75"
+                              : isEmpty
                               ? "border-2 border-red-300 dark:border-red-500/50 bg-red-50/50 dark:bg-red-950/20"
                               : isLow
                               ? "border-2 border-yellow-300 dark:border-yellow-500/50 bg-yellow-50/50 dark:bg-yellow-950/20"
@@ -1389,7 +1410,9 @@ function AnalysisContent() {
                             <div className="flex items-center gap-2">
                               <div
                                 className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                                  isEmpty
+                                  notRecommended
+                                    ? "bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400"
+                                    : isEmpty
                                     ? "bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400"
                                     : isLow
                                     ? "bg-yellow-100 dark:bg-yellow-900/50 text-yellow-600 dark:text-yellow-400"
@@ -1404,14 +1427,18 @@ function AnalysisContent() {
                                 </span>
                                 <span
                                   className={`text-xs font-medium ${
-                                    isEmpty
+                                    notRecommended
+                                      ? "text-emerald-600 dark:text-emerald-400"
+                                      : isEmpty
                                       ? "text-red-500 dark:text-red-400"
                                       : isLow
                                       ? "text-yellow-600 dark:text-yellow-400"
                                       : "text-zinc-600 dark:text-zinc-400"
                                   }`}
                                 >
-                                  {isEmpty
+                                  {notRecommended
+                                    ? "✓ 영양소 충분"
+                                    : isEmpty
                                     ? "⚠ 재고 부족"
                                     : isLow
                                     ? "잔여 적음"
@@ -1422,7 +1449,9 @@ function AnalysisContent() {
                             <div className="text-right">
                               <div
                                 className={`text-lg font-semibold ${
-                                  isEmpty
+                                  notRecommended
+                                    ? "text-emerald-600 dark:text-emerald-400"
+                                    : isEmpty
                                     ? "text-red-600 dark:text-red-400"
                                     : isLow
                                     ? "text-yellow-600 dark:text-yellow-400"
@@ -1441,7 +1470,9 @@ function AnalysisContent() {
                           <div className="w-full h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden mb-3">
                             <div
                               className={`h-full rounded-full transition-all ${
-                                isEmpty
+                                notRecommended
+                                  ? "bg-emerald-400"
+                                  : isEmpty
                                   ? "bg-red-500"
                                   : isLow
                                   ? "bg-yellow-500"
@@ -1455,11 +1486,15 @@ function AnalysisContent() {
 
                           {/* 약 이름 + 권장량 */}
                           <div className="flex items-center justify-between mb-2">
-                            <p className="font-medium text-sm">
+                            <p className={`font-medium text-sm ${notRecommended ? "line-through text-zinc-400" : ""}`}>
                               {rec.pillName}
                             </p>
-                            <span className="px-2 py-0.5 bg-black dark:bg-white text-white dark:text-black text-xs rounded-full">
-                              {rec.count}정
+                            <span className={`px-2 py-0.5 text-xs rounded-full ${
+                              notRecommended
+                                ? "bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400"
+                                : "bg-black dark:bg-white text-white dark:text-black"
+                            }`}>
+                              {notRecommended ? "불필요" : `${rec.count}정`}
                             </span>
                           </div>
 
@@ -1479,7 +1514,9 @@ function AnalysisContent() {
                             }
                             disabled={!canDispense}
                             className={`w-full px-3 py-2.5 rounded text-xs font-medium transition-colors mt-auto ${
-                              isEmpty
+                              notRecommended
+                                ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 cursor-not-allowed"
+                                : isEmpty
                                 ? "bg-red-100 dark:bg-red-900/30 text-red-500 dark:text-red-400 cursor-not-allowed"
                                 : canDispense
                                 ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black hover:bg-zinc-700 dark:hover:bg-zinc-300"
@@ -1488,6 +1525,8 @@ function AnalysisContent() {
                           >
                             {isExecuting
                               ? "배출 중..."
+                              : notRecommended
+                              ? "영양소 충분 - 배출 불필요"
                               : isEmpty
                               ? `재고 부족 (${remainingCount}개 남음)`
                               : `${rec.count}정 배출하기`}
