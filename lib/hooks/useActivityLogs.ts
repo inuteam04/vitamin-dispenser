@@ -53,11 +53,15 @@ function convertToActivityEvent(
   if (log.temperature !== undefined) data.temperature = log.temperature;
   if (log.humidity !== undefined) data.humidity = log.humidity;
 
+  // timestamp가 초 단위인 경우 밀리초로 변환 (10자리면 초, 13자리면 밀리초)
+  const timestampMs =
+    log.timestamp < 10000000000 ? log.timestamp * 1000 : log.timestamp;
+
   return {
     id,
     type: eventType,
     message: log.message,
-    timestamp: log.timestamp,
+    timestamp: timestampMs,
     data: Object.keys(data).length > 0 ? data : undefined,
   };
 }
